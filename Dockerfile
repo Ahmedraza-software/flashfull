@@ -10,12 +10,11 @@ FROM python:3.11-slim AS backend
 WORKDIR /app
 # Install system deps
 RUN apt-get update && apt-get install -y gcc postgresql-client supervisor curl && rm -rf /var/lib/apt/lists/* 
-# Copy backend code first
-COPY backend/ ./
-# Verify requirements.txt exists
-RUN ls -la requirements.txt || (echo "Contents of /app:" && ls -la /app)
 # Install Python deps
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# Copy backend code
+COPY backend/ ./
 # Copy built frontend
 COPY --from=frontend-builder /app/frontend/public ./public
 COPY --from=frontend-builder /app/frontend/.next/standalone ./
