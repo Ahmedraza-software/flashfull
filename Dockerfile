@@ -2,14 +2,14 @@
 FROM node:22-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend-next/package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 COPY frontend-next/ ./
 RUN npm run build
 
 FROM python:3.11-slim AS backend
 WORKDIR /app
 # Install system deps
-RUN apt-get update && apt-get install -y gcc postgresql-client supervisor curl &&lobals && rm - 
+RUN apt-get update && apt-get install -y gcc postgresql-client supervisor curl && rm -rf /var/lib/apt/lists/* 
 # Copy backend code first
 COPY backend/ ./
 # Install Python deps
