@@ -47,6 +47,7 @@ type DateFieldKeys =
   | "service_reenrollment_date";
 
 type FormValues = Omit<EmployeeUpdate, DateFieldKeys> & {
+  full_name?: string;
   date_of_birth?: dayjs.Dayjs | null;
   cnic_expiry_date?: dayjs.Dayjs | null;
   particulars_verified_by_sho_on?: dayjs.Dayjs | null;
@@ -110,18 +111,18 @@ export default function EmployeeEditPage() {
 
   const [activeTabKey, setActiveTabKey] = useState(
     "basic" as
-      | "basic"
-      | "job"
-      | "languages"
-      | "contact"
-      | "service"
-      | "compliance"
-      | "family"
-      | "verification"
-      | "fingerprints"
-      | "payroll"
-      | "warnings"
-      | "documents"
+    | "basic"
+    | "job"
+    | "languages"
+    | "contact"
+    | "service"
+    | "compliance"
+    | "family"
+    | "verification"
+    | "fingerprints"
+    | "payroll"
+    | "warnings"
+    | "documents"
   );
 
   const [docsLoading, setDocsLoading] = useState(false);
@@ -261,7 +262,7 @@ export default function EmployeeEditPage() {
         }
 
         const bytes = await baseDoc.save();
-        downloadBlob(new Blob([bytes], { type: "application/pdf" }), `${String(employee?.employee_id || "employee")}-warning-${String(w.warning_number || warningId)}.pdf`);
+        downloadBlob(new Blob([bytes as any], { type: "application/pdf" }), `${String(employee?.employee_id || "employee")}-warning-${String(w.warning_number || warningId)}.pdf`);
       } catch (e: unknown) {
         msg.error(errorMessage(e, "Failed to export PDF"));
       }
@@ -281,19 +282,19 @@ export default function EmployeeEditPage() {
         ? ((e as any).bank_accounts as Array<Record<string, unknown>>)
         : e.bank_name || e.account_number || e.account_type || e.tax_id
           ? [
-              {
-                bank_name: e.bank_name ?? undefined,
-                account_number: e.account_number ?? undefined,
-                ifsc_code: (e as any).ifsc_code ?? undefined,
-                account_type: e.account_type ?? undefined,
-                tax_id: e.tax_id ?? undefined,
-              },
-            ]
+            {
+              bank_name: e.bank_name ?? undefined,
+              account_number: e.account_number ?? undefined,
+              ifsc_code: (e as any).ifsc_code ?? undefined,
+              account_type: e.account_type ?? undefined,
+              tax_id: e.tax_id ?? undefined,
+            },
+          ]
           : [{}];
 
       const safe: FormValues = {
         ...(e as unknown as FormValues),
-        ...( { full_name: fullName, bank_accounts: bankAccountsInit } as any ),
+        ...({ full_name: fullName, bank_accounts: bankAccountsInit } as any),
         languages_spoken: (e as any).languages_spoken ?? undefined,
         retired_from: (e as any).retired_from ?? undefined,
         date_of_birth: e.date_of_birth ? dayjs(e.date_of_birth) : undefined,
@@ -302,7 +303,7 @@ export default function EmployeeEditPage() {
         particulars_verified_by_ssp_on: (e as any).particulars_verified_by_ssp_on ? dayjs((e as any).particulars_verified_by_ssp_on) : undefined,
         police_khidmat_verification_on: (e as any).police_khidmat_verification_on ? dayjs((e as any).police_khidmat_verification_on) : undefined,
       };
-      form.setFieldsValue(safe);
+      form.setFieldsValue(safe as any);
     } catch (e: unknown) {
       setEmployee(null);
       msg.error(errorMessage(e, "Failed to load employee"));
@@ -657,7 +658,7 @@ export default function EmployeeEditPage() {
               <Tabs
                 size="small"
                 activeKey={activeTabKey}
-                onChange={(k) => setActiveTabKey(k)}
+                onChange={(k) => setActiveTabKey(k as any)}
                 items={[
                   {
                     key: "basic",

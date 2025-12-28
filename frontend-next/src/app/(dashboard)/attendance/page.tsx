@@ -325,9 +325,9 @@ export default function AttendancePage() {
             leave_type:
               status === "leave"
                 ? ((rec?.leave_type ?? "paid").toString().toLowerCase() === "unpaid"
-                    ? "unpaid"
-                    : "paid")
-                : "",
+                  ? "unpaid"
+                  : "paid")
+                : ("" as "paid" | "unpaid" | ""),
             overtime_hours: status === "present" ? hoursFromMinutes(rec?.overtime_minutes ?? null) : undefined,
             overtime_rate: status === "present" ? (rec?.overtime_rate ?? undefined) : undefined,
             late_hours: status === "present" ? hoursFromMinutes(rec?.late_minutes ?? null) : undefined,
@@ -390,21 +390,21 @@ export default function AttendancePage() {
             return initial !== "unmarked";
           })
           .map((r) => {
-          const overtime_minutes = r.status === "present" ? toMinutesFromHours(r.overtime_hours) : null;
-          const late_minutes = r.status === "present" ? toMinutesFromHours(r.late_hours) : null;
+            const overtime_minutes = r.status === "present" ? toMinutesFromHours(r.overtime_hours) : null;
+            const late_minutes = r.status === "present" ? toMinutesFromHours(r.late_hours) : null;
 
-          return {
-            employee_id: r.employee_id,
-            status: r.status,
-            note: r.note || null,
-            overtime_minutes,
-            overtime_rate: r.status === "present" ? (r.overtime_rate ?? null) : null,
-            late_minutes,
-            late_deduction: r.status === "present" ? (r.late_deduction ?? null) : null,
-            leave_type: r.status === "leave" ? (r.leave_type || "paid") : null,
-            fine_amount: Number(r.fine_amount ?? 0) || 0,
-          };
-        }),
+            return {
+              employee_id: r.employee_id,
+              status: r.status,
+              note: r.note || null,
+              overtime_minutes,
+              overtime_rate: r.status === "present" ? (r.overtime_rate ?? null) : null,
+              late_minutes,
+              late_deduction: r.status === "present" ? (r.late_deduction ?? null) : null,
+              leave_type: r.status === "leave" ? (r.leave_type || "paid") : null,
+              fine_amount: Number(r.fine_amount ?? 0) || 0,
+            };
+          }),
       };
 
       await api.put<AttendanceListResponse>("/api/attendance/", payload);
@@ -520,7 +520,7 @@ export default function AttendancePage() {
         await api.post<any>("/api/leave-periods/", payload);
         msg.success("Long leave saved");
       }
-      
+
       setLeaveModalOpen(false);
       setEditingLeave(false);
       await load();
@@ -535,7 +535,7 @@ export default function AttendancePage() {
 
   const editLeavePeriod = useCallback(async () => {
     if (!leaveInfo) return;
-    
+
     // Open the leave modal with current data for editing
     setLeaveEmployeeId(leaveInfo.employee_id);
     setLeaveRange([dayjs(leaveInfo.from_date), dayjs(leaveInfo.to_date)]);
@@ -548,7 +548,7 @@ export default function AttendancePage() {
 
   const deleteLeavePeriod = useCallback(async () => {
     if (!leaveInfo) return;
-    
+
     try {
       await api.del(`/api/leave-periods/${leaveInfo.id}`);
       msg.success("Leave period deleted");
@@ -698,18 +698,18 @@ export default function AttendancePage() {
           // Debug logging
           console.log('Debug - Employee:', r.employee_id, 'Status:', r.status, 'Leave Type:', r.leave_type, 'IsOnLeave:', isOnLeave);
           return (
-            <Tooltip 
+            <Tooltip
               title={
-                isOnLeave 
+                isOnLeave
                   ? "Edit Leave Button - Opens modal with current leave data for editing\nDelete Leave Button - Removes leave period completely\nDynamic Modal Title - Shows 'Edit Long Leave' when editing\nSmart Save/Update - Uses PUT for edits, POST for new leaves"
                   : "Mark long leave for this employee"
               }
             >
-              <Button 
-                size="small" 
-                onClick={() => isOnLeave ? void openLeaveInfo(r.employee_id) : openLeaveModal(r.employee_id)} 
+              <Button
+                size="small"
+                onClick={() => isOnLeave ? void openLeaveInfo(r.employee_id) : openLeaveModal(r.employee_id)}
                 disabled={!singleDayMode}
-                style={{ 
+                style={{
                   backgroundColor: isOnLeave ? '#ffccc7' : undefined,
                   borderColor: isOnLeave ? '#ff7875' : undefined,
                   color: isOnLeave ? '#cf1322' : undefined
@@ -862,8 +862,8 @@ export default function AttendancePage() {
                 }}>
                   Cancel
                 </Button>
-                <Button 
-                  type="primary" 
+                <Button
+                  type="primary"
                   onClick={() => void submitLeavePeriod()}
                   loading={leaveSaving}
                 >
@@ -970,8 +970,8 @@ export default function AttendancePage() {
             </Col>
             <Col>
               <Space wrap>
-                <NotificationDropdown 
-                  alerts={leaveAlerts} 
+                <NotificationDropdown
+                  alerts={leaveAlerts}
                   onClear={() => {
                     setLeaveAlerts([]);
                     notification.destroy();
@@ -986,7 +986,7 @@ export default function AttendancePage() {
                 >
                   Refresh
                 </Button>
-                <Button 
+                <Button
                   onClick={() => notification.destroy()}
                 >
                   Clear Notifications
@@ -1070,8 +1070,8 @@ export default function AttendancePage() {
                   {singleDayMode
                     ? `Editing day: ${fromDate.format("YYYY-MM-DD")}`
                     : `Range mode: KPIs show ${fromDate.format("YYYY-MM-DD")} → ${toDate.format(
-                        "YYYY-MM-DD"
-                      )}. Select a single day (From=To) to edit the table.`}
+                      "YYYY-MM-DD"
+                    )}. Select a single day (From=To) to edit the table.`}
                 </Typography.Text>
               </div>
             </Col>

@@ -30,6 +30,7 @@ import { api } from "@/lib/api";
 import type { Employee, EmployeeCreate, EmployeeDocumentOut, EmployeeWarning } from "@/lib/types";
 
 type FormValues = Omit<EmployeeCreate, "date_of_birth"> & {
+  full_name?: string;
   date_of_birth?: string | dayjs.Dayjs | null;
   cnic_expiry_date?: string | dayjs.Dayjs | null;
   service_enrollment_date?: string | dayjs.Dayjs | null;
@@ -61,18 +62,18 @@ export default function EmployeeCreatePage() {
   const [warningsSaving, setWarningsSaving] = useState(false);
   const [activeTabKey, setActiveTabKey] = useState(
     "basic" as
-      | "basic"
-      | "job"
-      | "languages"
-      | "contact"
-      | "service"
-      | "family"
-      | "verification"
-      | "fingerprints"
-      | "payroll"
-      | "compliance"
-      | "warnings"
-      | "documents"
+    | "basic"
+    | "job"
+    | "languages"
+    | "contact"
+    | "service"
+    | "family"
+    | "verification"
+    | "fingerprints"
+    | "payroll"
+    | "compliance"
+    | "warnings"
+    | "documents"
   );
   const [form] = Form.useForm<FormValues>();
 
@@ -321,7 +322,7 @@ export default function EmployeeCreatePage() {
 
     const proficiency = Array.isArray((values as unknown as { languages_proficiency?: unknown }).languages_proficiency)
       ? ((values as unknown as { languages_proficiency?: Array<{ language: string; level: string }> }).languages_proficiency ?? [])
-          .filter((x) => x && x.language && x.level)
+        .filter((x) => x && x.language && x.level)
       : undefined;
     const languagesFromProficiency = proficiency?.map((x) => x.language).filter(Boolean);
     const spokenFromTags = Array.isArray((values as unknown as { languages_spoken?: unknown }).languages_spoken)

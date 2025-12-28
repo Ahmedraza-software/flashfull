@@ -60,6 +60,7 @@ type AllocateLine = {
 type AllocateFormValues = {
   employee_id?: string;
   notes?: string;
+  date?: Dayjs;
   lines?: AllocateLine[];
 };
 
@@ -753,6 +754,32 @@ export default function RestrictedInventoryPage() {
     ]
   );
 
+  const serialColumns = useMemo<ColumnsType<RestrictedSerialUnit>>(
+    () => [
+      {
+        title: "Serial Number",
+        dataIndex: "serial_number",
+        render: (v) => <Tag>{v}</Tag>,
+      },
+      {
+        title: "Status",
+        dataIndex: "status",
+        width: 100,
+        render: (v) => (
+          <Tag color={v === "in_stock" ? "green" : v === "issued" ? "blue" : "red"}>
+            {v === "in_stock" ? "In Stock" : v === "issued" ? "Issued" : v}
+          </Tag>
+        ),
+      },
+      {
+        title: "Issued To",
+        dataIndex: "issued_to_employee_id",
+        render: (v) => (v ? <Tag>{v}</Tag> : "-"),
+      },
+    ],
+    []
+  );
+
   return (
     <>
       {msgCtx}
@@ -1092,12 +1119,12 @@ export default function RestrictedInventoryPage() {
                           drawerMode === "view"
                             ? undefined
                             : {
-                                selectedRowKeys: actionSerials,
-                                onChange: onSerialSelectionChange,
-                                getCheckboxProps: (r) => ({
-                                  disabled: actionKind === "issue" ? r.status !== "in_stock" : false,
-                                }),
-                              }
+                              selectedRowKeys: actionSerials,
+                              onChange: onSerialSelectionChange,
+                              getCheckboxProps: (r) => ({
+                                disabled: actionKind === "issue" ? r.status !== "in_stock" : false,
+                              }),
+                            }
                         }
                         onRow={(r) => ({
                           onClick: () => {

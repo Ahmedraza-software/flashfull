@@ -195,8 +195,8 @@ export default function EmployeeDetailPage() {
                 Back
               </Button>
               <Divider type="vertical" />
-              <Avatar 
-                size={40} 
+              <Avatar
+                size={40}
                 src={employee.avatar_url ? `http://127.0.0.1:8000${employee.avatar_url}` : undefined}
                 icon={<UserOutlined />}
               />
@@ -230,11 +230,10 @@ export default function EmployeeDetailPage() {
       <Row gutter={[12, 12]}>
         {/* Basic Info */}
         <Col xs={24} lg={8}>
-          <Card 
-            size="small" 
+          <Card
+            size="small"
             title={<><UserOutlined /> Basic Information</>}
             style={{ height: "100%", backgroundColor: "white" }}
-            style={{ height: "100%" }}
           >
             <Descriptions column={2} size="small" colon={false}>
               <Descriptions.Item label="Serial #">{val(employee.serial_no)}</Descriptions.Item>
@@ -253,8 +252,8 @@ export default function EmployeeDetailPage() {
 
         {/* Identity & Documents */}
         <Col xs={24} lg={8}>
-          <Card 
-            size="small" 
+          <Card
+            size="small"
             title={<><IdcardOutlined /> Identity & Documents</>}
             style={{ height: "100%" }}
           >
@@ -281,8 +280,8 @@ export default function EmployeeDetailPage() {
 
         {/* Contact & Verification */}
         <Col xs={24} lg={8}>
-          <Card 
-            size="small" 
+          <Card
+            size="small"
             title={<><PhoneOutlined /> Contact & Verification</>}
             style={{ height: "100%" }}
           >
@@ -313,8 +312,8 @@ export default function EmployeeDetailPage() {
 
         {/* Address */}
         <Col xs={24} lg={8}>
-          <Card 
-            size="small" 
+          <Card
+            size="small"
             title={<><HomeOutlined /> Address</>}
           >
             <Descriptions column={2} size="small" colon={false}>
@@ -329,8 +328,8 @@ export default function EmployeeDetailPage() {
 
         {/* Other Info */}
         <Col xs={24} lg={8}>
-          <Card 
-            size="small" 
+          <Card
+            size="small"
             title={<><FileTextOutlined /> Other Information</>}
           >
             <Descriptions column={2} size="small" colon={false}>
@@ -346,8 +345,8 @@ export default function EmployeeDetailPage() {
 
         {/* Bank Accounts */}
         <Col xs={24} lg={8}>
-          <Card 
-            size="small" 
+          <Card
+            size="small"
             title={<><BankOutlined /> Bank Accounts</>}
           >
             {bankAccounts.length === 0 ? (

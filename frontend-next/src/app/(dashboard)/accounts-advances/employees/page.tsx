@@ -490,7 +490,7 @@ export default function EmployeeRecordsPage() {
       .map((e) => {
         const s = advanceSummaryByEmployeeDbId[e.id];
         return {
-          name: e.name || e.employee_id || e.serial_no || `ID:${e.id}`,
+          name: `${e.first_name} ${e.last_name}`.trim() || e.employee_id || `ID:${e.id}`,
           value: Number(s?.total_advanced ?? 0),
         };
       })
@@ -871,13 +871,13 @@ export default function EmployeeRecordsPage() {
                   value={kpis.netSalaryMarkedThisMonth}
                   prefix="Rs"
                   precision={2}
-                  styles={{ content: { color: "#0e7490"  }}}
+                  styles={{ content: { color: "#0e7490" } }}
                 />
               </Card>
             </Col>
             <Col xs={24} sm={12}>
               <Card size="small" style={{ borderRadius: 12, height: 96, background: "#fef2f2", border: "1px solid #fecaca" }}>
-                <Statistic title="Payroll Due (Unpaid)" value={kpis.totalPayrollDueThisMonth} prefix="Rs" precision={2} styles={{ content: { color: "#b91c1c"  }}} />
+                <Statistic title="Payroll Due (Unpaid)" value={kpis.totalPayrollDueThisMonth} prefix="Rs" precision={2} styles={{ content: { color: "#b91c1c" } }} />
               </Card>
             </Col>
           </Row>
@@ -918,14 +918,14 @@ export default function EmployeeRecordsPage() {
                 }}
               >
                 <List.Item.Meta
-                  title={`${e.employee_id || e.serial_no || e.fss_no} — ${e.name || `${e.first_name || ""} ${e.last_name || ""}`.trim()}`}
+                  title={`${e.employee_id} — ${`${e.first_name || ""} ${e.last_name || ""}`.trim()}`}
                   description={(() => {
                     const p = payrollByEmployeeId[e.employee_id];
                     const st = p?.paid_status ?? "unpaid";
                     const paidTxt = st === "paid" ? `Paid (${month}): ${money(p?.net_pay ?? 0)}` : `Unpaid (${month})`;
                     const adv = advanceSummaryByEmployeeDbId[e.id];
                     const advTxt = `Total Advances: ${money(adv?.total_advanced ?? 0)}`;
-                    return `${e.category || e.department || "-"} • ${e.rank || e.designation || "-"} • ${paidTxt} • ${advTxt}`;
+                    return `${e.department || "-"} • ${e.designation || "-"} • ${paidTxt} • ${advTxt}`;
                   })()}
                 />
               </List.Item>

@@ -259,7 +259,7 @@ export default function EmployeeViewPage() {
         }
 
         const bytes = await baseDoc.save();
-        downloadBlob(new Blob([bytes], { type: "application/pdf" }), `${String(employee?.employee_id || "employee")}-warning-${String(w.warning_number || warningId)}.pdf`);
+        downloadBlob(new Blob([bytes as any], { type: "application/pdf" }), `${String(employee?.employee_id || "employee")}-warning-${String(w.warning_number || warningId)}.pdf`);
       } catch (e: unknown) {
         msg.error(errorMessage(e, "Failed to export PDF"));
       }

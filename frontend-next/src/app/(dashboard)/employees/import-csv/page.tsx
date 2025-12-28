@@ -30,8 +30,8 @@ export default function ImportEmployeesCSV() {
         url: googleSheetUrl,
         mode: "preview",
       });
-      
-      const result = await api.post(`/api/employees/import/google-sheet?${params.toString()}`);
+
+      const result = await api.post<any>(`/api/employees/import/google-sheet?${params.toString()}`, {});
 
       setPreviewData(result);
       message.success(`Preview complete: ${result.created} employees ready to import`);
@@ -56,8 +56,8 @@ export default function ImportEmployeesCSV() {
         url: googleSheetUrl,
         mode: "import",
       });
-      
-      const result = await api.post(`/api/employees/import/google-sheet?${params.toString()}`);
+
+      const result = await api.post<any>(`/api/employees/import/google-sheet?${params.toString()}`, {});
 
       setImportResult(result);
       message.success(`Import complete: ${result.created} employees created`);

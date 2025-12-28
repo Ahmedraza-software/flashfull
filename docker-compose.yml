@@ -1,27 +1,41 @@
-version: '3.8'
-
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:15-alpine
-    container_name: erp_postgres
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: erp_mysql
     environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: admin@123
+      MYSQL_DATABASE: flash_erp
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_PASSWORD: password
+      MYSQL_USER: user
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - mysql_data:/var/lib/mysql
     networks:
       - erp_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # phpMyAdmin
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: erp_phpmyadmin
+    environment:
+      PMA_HOST: mysql
+      MYSQL_ROOT_PASSWORD: password
+    ports:
+      - "8080:80"
+    networks:
+      - erp_network
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
 
   # Combined Frontend + Backend
   erp_app:
@@ -30,29 +44,26 @@ services:
       dockerfile: Dockerfile
     container_name: erp_app
     environment:
-      DATABASE_URL: postgresql+psycopg://postgres:admin%40123@postgres:5432/postgres
+      DATABASE_URL: mysql+pymysql://root:password@mysql:3306/flash_erp
       SECRET_KEY: your-secret-key-here
       ACCESS_TOKEN_EXPIRE_MINUTES: 30
       ALGORITHM: HS256
       NEXT_PUBLIC_API_URL: http://localhost:8000
     ports:
-      - "3000:3000"
       - "8000:8000"
     depends_on:
-      postgres:
+      mysql:
         condition: service_healthy
     networks:
       - erp_network
     restart: unless-stopped
     volumes:
-      - ./backend:/app/backend
-      - ./frontend-next:/app/frontend
-      - /app/backend/__pycache__
-      - /app/frontend/node_modules
-      - /app/frontend/.next
+      - ./backend:/app
+      - ./uploads:/app/uploads
+      - /app/__pycache__
 
 volumes:
-  postgres_data:
+  mysql_data:
     driver: local
 
 networks:

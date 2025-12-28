@@ -38,6 +38,11 @@ import {
 } from "@ant-design/icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
+import isSameOrAfter from "dayjs/plugin/isSameOrAfter";
+import isSameOrBefore from "dayjs/plugin/isSameOrBefore";
+
+dayjs.extend(isSameOrAfter);
+dayjs.extend(isSameOrBefore);
 import { api } from "@/lib/api";
 import { API_BASE_URL } from "@/lib/config";
 
@@ -117,19 +122,19 @@ export default function ClientManagementPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [statistics, setStatistics] = useState<any>(null);
   const [statsLoading, setStatsLoading] = useState(false);
-  
+
   // Search and filter states
   const [searchText, setSearchText] = useState("");
   const [filterType, setFilterType] = useState<string>("");
   const [filterLocation, setFilterLocation] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("");
-  
+
   // Client drawer
   const [clientDrawerOpen, setClientDrawerOpen] = useState(false);
   const [clientDrawerMode, setClientDrawerMode] = useState<"create" | "edit">("create");
   const [activeClient, setActiveClient] = useState<Client | null>(null);
   const [clientForm] = Form.useForm();
-  
+
   // Detail modal
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -137,13 +142,13 @@ export default function ClientManagementPage() {
 
   const [contractStatusFilter, setContractStatusFilter] = useState<string>("Active");
   const [dateRangeFilter, setDateRangeFilter] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
-  
+
   // Focal person drawer
   const [focalDrawerOpen, setFocalDrawerOpen] = useState(false);
   const [focalDrawerMode, setFocalDrawerMode] = useState<"create" | "edit">("create");
   const [activeFocal, setActiveFocal] = useState<FocalPerson | null>(null);
   const [focalForm] = Form.useForm();
-  
+
   // Contract drawer
   const [contractDrawerOpen, setContractDrawerOpen] = useState(false);
   const [contractDrawerMode, setContractDrawerMode] = useState<"create" | "edit">("create");
@@ -153,7 +158,7 @@ export default function ClientManagementPage() {
   const [selectedGuards, setSelectedGuards] = useState<number[]>([]);
   const [allGuards, setAllGuards] = useState<any[]>([]);
   const [guardSearch, setGuardSearch] = useState("");
-  
+
   // Guard allocation
   const [allocDrawerOpen, setAllocDrawerOpen] = useState(false);
   const [allocations, setAllocations] = useState<GuardAllocation[]>([]);
@@ -195,22 +200,22 @@ export default function ClientManagementPage() {
   const filteredClients = useMemo(() => {
     return clients.filter(client => {
       // Search filter
-      const matchesSearch = !searchText || 
+      const matchesSearch = !searchText ||
         client.client_name.toLowerCase().includes(searchText.toLowerCase()) ||
         client.client_code.toLowerCase().includes(searchText.toLowerCase());
-      
+
       // Type filter (case-insensitive partial match)
-      const matchesType = !filterType || 
+      const matchesType = !filterType ||
         (client.client_type && client.client_type.toLowerCase().includes(filterType.toLowerCase()));
-      
+
       // Location filter (case-insensitive partial match)
       const locationText = (client.location || client.address || "").toLowerCase();
       const matchesLocation = !filterLocation || locationText.includes(filterLocation.toLowerCase());
-      
+
       // Status filter (case-insensitive partial match)
-      const matchesStatus = !filterStatus || 
+      const matchesStatus = !filterStatus ||
         (client.status && client.status.toLowerCase().includes(filterStatus.toLowerCase()));
-      
+
       return matchesSearch && matchesType && matchesLocation && matchesStatus;
     });
   }, [clients, searchText, filterType, filterLocation, filterStatus]);
@@ -234,27 +239,27 @@ export default function ClientManagementPage() {
 
   const filteredDetailContracts = useMemo(() => {
     let list = detail?.contracts || [];
-    
+
     // Apply status filter
     const statusFilter = (contractStatusFilter || "").trim();
     if (statusFilter && statusFilter !== "All") {
       list = list.filter(c => String(c.status || "").toLowerCase() === statusFilter.toLowerCase());
     }
-    
+
     // Apply date range filter if either start or end date is set
     const [startDate, endDate] = dateRangeFilter;
     if (startDate || endDate) {
       list = list.filter(contract => {
         const contractDate = contract.start_date ? dayjs(contract.start_date) : null;
         if (!contractDate) return false;
-        
+
         const isAfterStart = !startDate || contractDate.isSameOrAfter(startDate.startOf('day'));
         const isBeforeEnd = !endDate || contractDate.isSameOrBefore(endDate.endOf('day'));
-        
+
         return isAfterStart && isBeforeEnd;
       });
     }
-    
+
     return list;
   }, [contractStatusFilter, dateRangeFilter, detail?.contracts]);
 
@@ -383,7 +388,7 @@ export default function ClientManagementPage() {
       const response = await api.get<{ employees: any[]; total: number }>("/api/employees2/?limit=500");
       const guards = response?.employees || [];
       // Filter to show only free guards
-      const freeGuards = guards.filter((g: any) => 
+      const freeGuards = guards.filter((g: any) =>
         !g.allocation_status || g.allocation_status === "Free"
       );
       setAllGuards(freeGuards);
@@ -433,12 +438,12 @@ export default function ClientManagementPage() {
       required_guards: requiredGuards,
     };
     delete payload.required_guards; // Remove from contract payload
-    
+
     try {
       if (contractDrawerMode === "create") {
         // Create contract first
         const created = await api.post<{ id: number }>(`/api/client-management/clients/${detail.id}/contracts`, payload);
-        
+
         // Allocate selected guards
         for (const guardId of selectedGuards) {
           await api.post(`/api/client-management/contracts/${created.id}/allocations`, {
@@ -699,7 +704,7 @@ export default function ClientManagementPage() {
   return (
     <>
       {msgCtx}
-      
+
       {/* KPI Cards */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={12} md={6}>
@@ -758,7 +763,7 @@ export default function ClientManagementPage() {
             </Button>
           </Col>
         </Row>
-        
+
         {/* Search and Filters */}
         <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
           <Col xs={24} sm={12} md={8}>
@@ -842,7 +847,7 @@ export default function ClientManagementPage() {
             </Button>
           </Col>
         </Row>
-        
+
         <Table<Client>
           rowKey="id"
           size="small"
@@ -1027,8 +1032,8 @@ export default function ClientManagementPage() {
                             allowClear
                           />
                           {(dateRangeFilter[0] || dateRangeFilter[1]) && (
-                            <Button 
-                              size="small" 
+                            <Button
+                              size="small"
                               onClick={() => setDateRangeFilter([null, null])}
                             >
                               Clear Dates
@@ -1151,7 +1156,7 @@ export default function ClientManagementPage() {
           <Form.Item name="notes" label="Notes">
             <Input.TextArea rows={2} />
           </Form.Item>
-          
+
           {/* Guard Selection - Only show in create mode */}
           {contractDrawerMode === "create" && (
             <>
@@ -1172,7 +1177,7 @@ export default function ClientManagementPage() {
                   placeholder="Number of guards needed"
                 />
               </Form.Item>
-              
+
               {requiredGuards > 0 && (
                 <>
                   <Form.Item label={`Select Guards (${selectedGuards.length}/${requiredGuards})`}>
@@ -1184,7 +1189,7 @@ export default function ClientManagementPage() {
                       prefix={<TeamOutlined />}
                     />
                   </Form.Item>
-                  
+
                   {/* Selected Guards */}
                   {selectedGuards.length > 0 && (
                     <div style={{ marginBottom: 12 }}>
@@ -1206,7 +1211,7 @@ export default function ClientManagementPage() {
                       </div>
                     </div>
                   )}
-                  
+
                   {/* Available Guards List */}
                   <div style={{ maxHeight: 200, overflowY: "auto", border: "1px solid #d9d9d9", borderRadius: 6, padding: 8 }}>
                     {allGuards
@@ -1303,7 +1308,7 @@ export default function ClientManagementPage() {
               ]}
             />
           </Card>
-          
+
           <Card size="small" title="Available Guards">
             <Table
               rowKey="id"

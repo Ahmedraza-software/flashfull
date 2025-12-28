@@ -544,7 +544,7 @@ export default function EmployeesPage() {
 
         const bytes = await pdf.save();
         downloadBlob(
-          new Blob([bytes], { type: "application/pdf" }),
+          new Blob([bytes as any], { type: "application/pdf" }),
           `${String(employee.employee_id || "employee")}-profile.pdf`
         );
       } catch (e: unknown) {
@@ -756,7 +756,7 @@ export default function EmployeesPage() {
         }
 
         const bytes = await baseDoc.save();
-        const blob = new Blob([bytes], { type: "application/pdf" });
+        const blob = new Blob([bytes as any], { type: "application/pdf" });
         const fname = `${String(active?.employee_id || "employee")}-warning-${String(w.warning_number || warningId)}.pdf`;
         downloadBlob(blob, fname);
       } catch (e: unknown) {
@@ -1149,10 +1149,10 @@ export default function EmployeesPage() {
 
   const onBulkDelete = useCallback(async () => {
     if (selectedRowKeys.length === 0) return;
-    
+
     const selectedEmployees = rows.filter(emp => selectedRowKeys.includes(emp.employee_id));
     const employeeIds = selectedEmployees.map(emp => emp.employee_id);
-    
+
     Modal.confirm({
       title: 'Delete Selected Employees',
       content: (
@@ -1179,12 +1179,12 @@ export default function EmployeesPage() {
             deleted_ids: string[];
             warning?: string;
           }>('/api/employees/delete-multiple', employeeIds);
-          
+
           msg.success(`${result.deleted_count} employee(s) deleted successfully`);
           if (result.warning) {
             msg.warning(result.warning);
           }
-          
+
           setSelectedRowKeys([]);
           void fetchEmployees();
         } catch (err: unknown) {
@@ -1201,7 +1201,7 @@ export default function EmployeesPage() {
 
     const proficiency = Array.isArray((values as unknown as { languages_proficiency?: unknown }).languages_proficiency)
       ? ((values as unknown as { languages_proficiency?: Array<{ language: string; level: string }> }).languages_proficiency ?? [])
-          .filter((x) => x && x.language && x.level)
+        .filter((x) => x && x.language && x.level)
       : undefined;
     const languagesFromProficiency = proficiency?.map((x) => x.language).filter(Boolean);
     const spokenFromTags = Array.isArray((values as unknown as { languages_spoken?: unknown }).languages_spoken)
@@ -1564,8 +1564,8 @@ export default function EmployeesPage() {
               <Typography.Text strong>
                 {selectedRowKeys.length} employee(s) selected
               </Typography.Text>
-              <Button 
-                size="small" 
+              <Button
+                size="small"
                 onClick={() => setSelectedRowKeys([])}
               >
                 Clear Selection
@@ -1593,8 +1593,8 @@ export default function EmployeesPage() {
     drawerMode === "create"
       ? "Create Employee"
       : drawerMode === "edit"
-      ? `Edit Employee (${active?.employee_id ?? ""})`
-      : `View Employee (${active?.employee_id ?? ""})`;
+        ? `Edit Employee (${active?.employee_id ?? ""})`
+        : `View Employee (${active?.employee_id ?? ""})`;
 
   const docsList = useMemo(() => {
     const base = API_BASE_URL || "";
@@ -2678,16 +2678,16 @@ export default function EmployeesPage() {
                                     ...(readOnly
                                       ? []
                                       : [
-                                          <Popconfirm
-                                            key="delete"
-                                            title="Delete document?"
-                                            okText="Delete"
-                                            okButtonProps={{ danger: true }}
-                                            onConfirm={() => void deleteDocument(d)}
-                                          >
-                                            <Button danger>Delete</Button>
-                                          </Popconfirm>,
-                                        ]),
+                                        <Popconfirm
+                                          key="delete"
+                                          title="Delete document?"
+                                          okText="Delete"
+                                          okButtonProps={{ danger: true }}
+                                          onConfirm={() => void deleteDocument(d)}
+                                        >
+                                          <Button danger>Delete</Button>
+                                        </Popconfirm>,
+                                      ]),
                                   ]}
                                 >
                                   <List.Item.Meta
@@ -2713,10 +2713,10 @@ export default function EmployeesPage() {
                                   readOnly
                                     ? []
                                     : [
-                                        <Button key="remove" danger onClick={() => removePendingDoc(idx)}>
-                                          Remove
-                                        </Button>,
-                                      ]
+                                      <Button key="remove" danger onClick={() => removePendingDoc(idx)}>
+                                        Remove
+                                      </Button>,
+                                    ]
                                 }
                               >
                                 <List.Item.Meta

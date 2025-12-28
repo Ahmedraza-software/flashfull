@@ -50,7 +50,7 @@ interface Employee {
 
 const EXPENSE_CATEGORIES = [
   "Office Supplies",
-  "Travel & Transportation", 
+  "Travel & Transportation",
   "Utilities",
   "Rent",
   "Marketing & Advertising",
@@ -80,16 +80,16 @@ function errorMessage(e: unknown, fallback: string): string {
 
 export default function ExpensesPage() {
   const [msg, msgCtx] = message.useMessage();
-  
+
   const [loading, setLoading] = useState(false);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [summary, setSummary] = useState<ExpenseSummary | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  
+
   const [month, setMonth] = useState(dayjs().format("YYYY-MM"));
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
-  
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [viewDrawerOpen, setViewDrawerOpen] = useState(false);
   const [exportDrawerOpen, setExportDrawerOpen] = useState(false);
@@ -122,13 +122,13 @@ export default function ExpensesPage() {
       ]);
 
       // Parse amounts as numbers
-      const parsedExpenses = Array.isArray(expensesRes) 
+      const parsedExpenses = Array.isArray(expensesRes)
         ? expensesRes.map(exp => ({
-            ...exp,
-            amount: typeof exp.amount === 'string' ? parseFloat(exp.amount) : exp.amount
-          }))
+          ...exp,
+          amount: typeof exp.amount === 'string' ? parseFloat(exp.amount) : exp.amount
+        }))
         : [];
-      
+
       setExpenses(parsedExpenses);
       setSummary(summaryRes || null);
       setEmployees(Array.isArray(employeesRes?.employees) ? employeesRes.employees : []);
@@ -149,19 +149,19 @@ export default function ExpensesPage() {
   const handleCreateExpense = useCallback(async (values: any) => {
     try {
       let attachmentUrl = values.attachment_url;
-      
+
       // Upload file if one was selected
       if (uploadedFile && uploadedFile instanceof File) {
         const formData = new FormData();
         formData.append('file', uploadedFile);
-        
+
         try {
           // Upload to a simple endpoint (we'll create this)
           const uploadResponse = await fetch('/api/upload', {
             method: 'POST',
             body: formData
           });
-          
+
           if (uploadResponse.ok) {
             const uploadData = await uploadResponse.json();
             attachmentUrl = uploadData.url || uploadData.path;
@@ -175,7 +175,7 @@ export default function ExpensesPage() {
           attachmentUrl = null;
         }
       }
-      
+
       await api.post("/api/expenses/", {
         expense_date: values.expense_date.format("YYYY-MM-DD"),
         category: values.category,
@@ -187,7 +187,7 @@ export default function ExpensesPage() {
         attachment_url: attachmentUrl || null,
         employee_id: values.employee_id || null
       });
-      
+
       msg.success("Expense created successfully");
       setDrawerOpen(false);
       setUploadedFile(null);
@@ -200,21 +200,21 @@ export default function ExpensesPage() {
 
   const handleUpdateExpense = useCallback(async (values: any) => {
     if (!editingExpense) return;
-    
+
     try {
       let attachmentUrl = values.attachment_url;
-      
+
       // Upload file if one was selected
       if (uploadedFile && uploadedFile instanceof File) {
         const formData = new FormData();
         formData.append('file', uploadedFile);
-        
+
         try {
           const uploadResponse = await fetch('/api/upload', {
             method: 'POST',
             body: formData
           });
-          
+
           if (uploadResponse.ok) {
             const uploadData = await uploadResponse.json();
             attachmentUrl = uploadData.url || uploadData.path;
@@ -228,7 +228,7 @@ export default function ExpensesPage() {
           attachmentUrl = editingExpense.attachment_url;
         }
       }
-      
+
       await api.put(`/api/expenses/${editingExpense.id}`, {
         expense_date: values.expense_date.format("YYYY-MM-DD"),
         category: values.category,
@@ -240,7 +240,7 @@ export default function ExpensesPage() {
         attachment_url: attachmentUrl || null,
         employee_id: values.employee_id || null
       });
-      
+
       msg.success("Expense updated successfully");
       setDrawerOpen(false);
       setEditingExpense(null);
@@ -254,7 +254,7 @@ export default function ExpensesPage() {
 
   const handleApproveExpense = useCallback(async (expense: Expense) => {
     try {
-      await api.post(`/api/expenses/${expense.id}/approve`);
+      await api.post(`/api/expenses/${expense.id}/approve`, {});
       msg.success("Expense approved successfully");
       void loadData();
     } catch (e: unknown) {
@@ -264,7 +264,7 @@ export default function ExpensesPage() {
 
   const handlePayExpense = useCallback(async (expense: Expense) => {
     try {
-      await api.post(`/api/expenses/${expense.id}/pay`);
+      await api.post(`/api/expenses/${expense.id}/pay`, {});
       msg.success("Expense paid successfully");
       void loadData();
     } catch (e: unknown) {
@@ -278,7 +278,7 @@ export default function ExpensesPage() {
       content: "Are you sure you want to undo this payment? The expense will be marked as approved.",
       onOk: async () => {
         try {
-          await api.post(`/api/expenses/${expense.id}/undo-payment`);
+          await api.post(`/api/expenses/${expense.id}/undo-payment`, {});
           msg.success("Payment undone successfully");
           void loadData();
         } catch (e: unknown) {
@@ -341,7 +341,7 @@ export default function ExpensesPage() {
     try {
       const response = await fetch(`http://localhost:8000/api/expenses/${expense.id}/export/pdf`);
       if (!response.ok) throw new Error('Export failed');
-      
+
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -351,7 +351,7 @@ export default function ExpensesPage() {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-      
+
       msg.success('Expense exported to PDF');
     } catch (e: unknown) {
       msg.error(errorMessage(e, 'Failed to export PDF'));
@@ -375,16 +375,16 @@ export default function ExpensesPage() {
         ['Approved At', expense.approved_at ? dayjs(expense.approved_at).format('YYYY-MM-DD HH:mm:ss') : ''],
         ['Paid At', expense.paid_at ? dayjs(expense.paid_at).format('YYYY-MM-DD HH:mm:ss') : '']
       ];
-      
-      const csvContent = csvData.map(row => 
+
+      const csvContent = csvData.map(row =>
         row.map(cell => {
           const str = String(cell);
-          return str.includes(',') || str.includes('"') || str.includes('\n') 
-            ? `"${str.replace(/"/g, '""')}"` 
+          return str.includes(',') || str.includes('"') || str.includes('\n')
+            ? `"${str.replace(/"/g, '""')}"`
             : str;
         }).join(',')
       ).join('\n');
-      
+
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -394,7 +394,7 @@ export default function ExpensesPage() {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-      
+
       msg.success('Expense exported to CSV');
     } catch (e: unknown) {
       msg.error(errorMessage(e, 'Failed to export CSV'));
@@ -407,9 +407,9 @@ export default function ExpensesPage() {
       const fromDate = values.date_range[0].format('YYYY-MM-DD');
       const toDate = values.date_range[1].format('YYYY-MM-DD');
       const format = values.format;
-      
+
       console.log('Export params:', { fromDate, toDate, format });
-      
+
       if (format === 'pdf') {
         const response = await fetch(
           `http://localhost:8000/api/expenses/export/pdf?from_date=${fromDate}&to_date=${toDate}`
@@ -425,7 +425,7 @@ export default function ExpensesPage() {
           }
           throw new Error(errorMsg);
         }
-        
+
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -440,16 +440,16 @@ export default function ExpensesPage() {
         const token = typeof window !== 'undefined' ? window.localStorage.getItem('access_token') : null;
         const url = `http://localhost:8000/api/expenses/?from_date=${fromDate}&to_date=${toDate}&limit=1000`;
         console.log('Fetching expenses from:', url);
-        
+
         const response = await fetch(url, {
           headers: {
             'Content-Type': 'application/json',
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           }
         });
-        
+
         console.log('Response status:', response.status);
-        
+
         if (!response.ok) {
           const errorText = await response.text();
           console.log('Error response:', errorText);
@@ -459,7 +459,7 @@ export default function ExpensesPage() {
             // Handle FastAPI validation errors
             if (errorData.detail) {
               if (Array.isArray(errorData.detail)) {
-                errorMsg = errorData.detail.map((err: any) => 
+                errorMsg = errorData.detail.map((err: any) =>
                   `${err.loc?.join('.')} - ${err.msg}`
                 ).join(', ');
               } else if (typeof errorData.detail === 'string') {
@@ -473,27 +473,27 @@ export default function ExpensesPage() {
           }
           throw new Error(errorMsg);
         }
-        
+
         const expensesRes = await response.json();
         console.log('Fetched expenses:', expensesRes.length);
-        
-        const expensesList = Array.isArray(expensesRes) 
+
+        const expensesList = Array.isArray(expensesRes)
           ? expensesRes.map(exp => ({
-              ...exp,
-              amount: typeof exp.amount === 'string' ? parseFloat(exp.amount) : exp.amount
-            }))
+            ...exp,
+            amount: typeof exp.amount === 'string' ? parseFloat(exp.amount) : exp.amount
+          }))
           : [];
-        
+
         if (expensesList.length === 0) {
           msg.warning('No expenses found for the selected date range');
           setExporting(false);
           return;
         }
-        
+
         const csvData = [
           ['ID', 'Date', 'Category', 'Description', 'Amount', 'Vendor', 'Receipt Number', 'Status', 'Notes', 'Created At', 'Approved At', 'Paid At']
         ];
-        
+
         expensesList.forEach(exp => {
           csvData.push([
             String(exp.id),
@@ -510,8 +510,8 @@ export default function ExpensesPage() {
             exp.paid_at ? dayjs(exp.paid_at).format('YYYY-MM-DD HH:mm:ss') : ''
           ]);
         });
-        
-        const csvContent = csvData.map(row => 
+
+        const csvContent = csvData.map(row =>
           row.map(cell => {
             const str = String(cell);
             // Escape quotes and wrap in quotes if contains comma, quote, or newline
@@ -521,7 +521,7 @@ export default function ExpensesPage() {
             return str;
           }).join(',')
         ).join('\n');
-        
+
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url2 = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -532,7 +532,7 @@ export default function ExpensesPage() {
         a.remove();
         window.URL.revokeObjectURL(url2);
       }
-      
+
       msg.success('Expenses exported successfully');
       setExportDrawerOpen(false);
       exportForm.resetFields();
@@ -584,8 +584,8 @@ export default function ExpensesPage() {
       key: "amount",
       width: 140,
       render: (amount: number) => (
-        <span style={{ 
-          fontWeight: 600, 
+        <span style={{
+          fontWeight: 600,
           fontSize: '16px',
           color: '#1677ff'
         }}>
@@ -622,9 +622,9 @@ export default function ExpensesPage() {
       render: (status: string) => {
         const statusConfig = STATUS_COLORS[status as keyof typeof STATUS_COLORS];
         return (
-          <Tag 
+          <Tag
             color={statusConfig.color}
-            style={{ 
+            style={{
               backgroundColor: statusConfig.bg,
               border: `1px solid ${statusConfig.border}`,
               borderRadius: 8,
@@ -651,7 +651,7 @@ export default function ExpensesPage() {
               style={{ borderColor: '#1677ff', color: '#1677ff' }}
             />
           </Tooltip>
-          
+
           {/* Export dropdown */}
           <Dropdown
             menu={{
@@ -678,7 +678,7 @@ export default function ExpensesPage() {
               style={{ borderColor: '#52c41a', color: '#52c41a' }}
             />
           </Dropdown>
-          
+
           {/* Edit button for all statuses except rejected */}
           {expense.status !== "REJECTED" && (
             <Tooltip title="Edit">
@@ -690,7 +690,7 @@ export default function ExpensesPage() {
               />
             </Tooltip>
           )}
-          
+
           {expense.status === "PENDING" && (
             <Tooltip title="Approve">
               <Button
@@ -702,7 +702,7 @@ export default function ExpensesPage() {
               />
             </Tooltip>
           )}
-          
+
           {(expense.status === "APPROVED" || expense.status === "PENDING") && (
             <Tooltip title="Pay">
               <Button
@@ -714,7 +714,7 @@ export default function ExpensesPage() {
               />
             </Tooltip>
           )}
-          
+
           {expense.status === "PAID" && (
             <Tooltip title="Undo Payment">
               <Button
@@ -725,7 +725,7 @@ export default function ExpensesPage() {
               />
             </Tooltip>
           )}
-          
+
           <Tooltip title="Delete">
             <Button
               size="small"
@@ -751,24 +751,24 @@ export default function ExpensesPage() {
         }
         extra={
           <Space>
-            <Button 
-              icon={<ReloadOutlined />} 
-              onClick={() => void loadData()} 
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => void loadData()}
               loading={loading}
               style={{ borderRadius: 8 }}
             />
-            <Button 
-              icon={<DownloadOutlined />} 
+            <Button
+              icon={<DownloadOutlined />}
               onClick={() => setExportDrawerOpen(true)}
               style={{ borderRadius: 8 }}
             >
               Export
             </Button>
-            <Button 
-              type="primary" 
-              icon={<PlusOutlined />} 
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
               onClick={openCreateDrawer}
-              style={{ 
+              style={{
                 borderRadius: 8,
                 background: 'linear-gradient(135deg, #1677ff 0%, #69c0ff 100%)',
                 border: 'none',
@@ -779,7 +779,7 @@ export default function ExpensesPage() {
             </Button>
           </Space>
         }
-        style={{ 
+        style={{
           borderRadius: 12,
           boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)'
         }}
@@ -817,9 +817,9 @@ export default function ExpensesPage() {
         </Space>
 
         {summary && (
-          <Card 
-            size="small" 
-            style={{ 
+          <Card
+            size="small"
+            style={{
               marginBottom: 20,
               borderRadius: 12,
               background: 'linear-gradient(135deg, #f0f9ff 0%, #e6f7ff 100%)',
@@ -842,7 +842,7 @@ export default function ExpensesPage() {
                     value={summary.total_expenses}
                     prefix="Rs"
                     precision={2}
-                    styles={{ content: { color: 'white', fontWeight: 600  }}}
+                    styles={{ content: { color: 'white', fontWeight: 600 } }}
                   />
                 </Card>
               </Col>
@@ -861,7 +861,7 @@ export default function ExpensesPage() {
                     value={summary.pending_expenses}
                     prefix="Rs"
                     precision={2}
-                    styles={{ content: { color: 'white', fontWeight: 600  }}}
+                    styles={{ content: { color: 'white', fontWeight: 600 } }}
                   />
                 </Card>
               </Col>
@@ -880,7 +880,7 @@ export default function ExpensesPage() {
                     value={summary.approved_expenses}
                     prefix="Rs"
                     precision={2}
-                    styles={{ content: { color: 'white', fontWeight: 600  }}}
+                    styles={{ content: { color: 'white', fontWeight: 600 } }}
                   />
                 </Card>
               </Col>
@@ -899,7 +899,7 @@ export default function ExpensesPage() {
                     value={summary.paid_expenses}
                     prefix="Rs"
                     precision={2}
-                    styles={{ content: { color: 'white', fontWeight: 600  }}}
+                    styles={{ content: { color: 'white', fontWeight: 600 } }}
                   />
                 </Card>
               </Col>
@@ -956,8 +956,8 @@ export default function ExpensesPage() {
                 label={<span style={{ fontWeight: 500 }}>Expense Date</span>}
                 rules={[{ required: true, message: "Please select expense date" }]}
               >
-                <DatePicker 
-                  style={{ width: "100%", borderRadius: 8 }} 
+                <DatePicker
+                  style={{ width: "100%", borderRadius: 8 }}
                   size="large"
                 />
               </Form.Item>
@@ -982,8 +982,8 @@ export default function ExpensesPage() {
             label={<span style={{ fontWeight: 500 }}>Description</span>}
             rules={[{ required: true, message: "Please enter description" }]}
           >
-            <Input 
-              size="large" 
+            <Input
+              size="large"
               style={{ borderRadius: 8 }}
               placeholder="Enter expense description"
             />
@@ -1010,12 +1010,12 @@ export default function ExpensesPage() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item 
-                name="vendor_name" 
+              <Form.Item
+                name="vendor_name"
                 label={<span style={{ fontWeight: 500 }}>Vendor Name</span>}
               >
-                <Input 
-                  size="large" 
+                <Input
+                  size="large"
                   style={{ borderRadius: 8 }}
                   placeholder="Enter vendor name"
                 />
@@ -1025,25 +1025,25 @@ export default function ExpensesPage() {
 
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item 
-                name="receipt_number" 
+              <Form.Item
+                name="receipt_number"
                 label={<span style={{ fontWeight: 500 }}>Receipt Number</span>}
               >
-                <Input 
-                  size="large" 
+                <Input
+                  size="large"
                   style={{ borderRadius: 8 }}
                   placeholder="Enter receipt number"
                 />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item 
-                name="employee_id" 
+              <Form.Item
+                name="employee_id"
                 label={<span style={{ fontWeight: 500 }}>Employee</span>}
               >
-                <Select 
-                  allowClear 
-                  placeholder="Select employee" 
+                <Select
+                  allowClear
+                  placeholder="Select employee"
                   showSearch
                   size="large"
                   style={{ borderRadius: 8 }}
@@ -1058,8 +1058,8 @@ export default function ExpensesPage() {
             </Col>
           </Row>
 
-          <Form.Item 
-            name="attachment_url" 
+          <Form.Item
+            name="attachment_url"
             label={<span style={{ fontWeight: 500 }}>Attachment</span>}
           >
             <Space direction="vertical" style={{ width: '100%' }}>
@@ -1078,11 +1078,11 @@ export default function ExpensesPage() {
                     msg.error('File must be smaller than 10MB!');
                     return false;
                   }
-                  
+
                   // Store file for upload
                   setUploadedFile(file);
                   msg.success(`${file.name} selected successfully`);
-                  
+
                   return false; // Prevent auto upload
                 }}
                 onRemove={() => {
@@ -1095,10 +1095,10 @@ export default function ExpensesPage() {
                   url: ''
                 }] : []}
               >
-                <Button 
+                <Button
                   icon={<UploadOutlined />}
                   size="large"
-                  style={{ 
+                  style={{
                     borderRadius: 8,
                     width: '100%'
                   }}
@@ -1107,17 +1107,17 @@ export default function ExpensesPage() {
                 </Button>
               </Upload>
               {editingExpense?.attachment_url && !uploadedFile && (
-                <div style={{ 
-                  padding: '8px 12px', 
-                  background: '#f0f9ff', 
+                <div style={{
+                  padding: '8px 12px',
+                  background: '#f0f9ff',
                   borderRadius: 8,
                   border: '1px solid #91d5ff'
                 }}>
                   <Space>
                     <DownloadOutlined style={{ color: '#1677ff' }} />
-                    <a 
-                      href={editingExpense.attachment_url} 
-                      target="_blank" 
+                    <a
+                      href={editingExpense.attachment_url}
+                      target="_blank"
                       rel="noopener noreferrer"
                       style={{ color: '#1677ff', fontWeight: 500 }}
                     >
@@ -1129,12 +1129,12 @@ export default function ExpensesPage() {
             </Space>
           </Form.Item>
 
-          <Form.Item 
-            name="notes" 
+          <Form.Item
+            name="notes"
             label={<span style={{ fontWeight: 500 }}>Notes</span>}
           >
-            <TextArea 
-              rows={3} 
+            <TextArea
+              rows={3}
               style={{ borderRadius: 8 }}
               placeholder="Enter additional notes"
             />
@@ -1144,11 +1144,11 @@ export default function ExpensesPage() {
 
           <Form.Item style={{ marginBottom: 0 }}>
             <Space>
-              <Button 
-                type="primary" 
+              <Button
+                type="primary"
                 htmlType="submit"
                 size="large"
-                style={{ 
+                style={{
                   borderRadius: 8,
                   background: 'linear-gradient(135deg, #1677ff 0%, #69c0ff 100%)',
                   border: 'none',
@@ -1157,7 +1157,7 @@ export default function ExpensesPage() {
               >
                 {editingExpense ? "Update" : "Create"} Expense
               </Button>
-              <Button 
+              <Button
                 onClick={() => {
                   setDrawerOpen(false);
                   setEditingExpense(null);
@@ -1192,8 +1192,8 @@ export default function ExpensesPage() {
       >
         {viewingExpense && (
           <div style={{ padding: '16px 0' }}>
-            <Card 
-              style={{ 
+            <Card
+              style={{
                 marginBottom: 20,
                 borderRadius: 12,
                 background: 'linear-gradient(135deg, #f0f9ff 0%, #e6f7ff 100%)',
@@ -1204,9 +1204,9 @@ export default function ExpensesPage() {
                 <Col span={12}>
                   <div>
                     <span style={{ color: '#666', fontSize: '14px' }}>Amount</span>
-                    <div style={{ 
-                      fontSize: '24px', 
-                      fontWeight: 600, 
+                    <div style={{
+                      fontSize: '24px',
+                      fontWeight: 600,
                       color: '#1677ff',
                       marginTop: 4
                     }}>
@@ -1218,9 +1218,9 @@ export default function ExpensesPage() {
                   <div>
                     <span style={{ color: '#666', fontSize: '14px' }}>Status</span>
                     <div style={{ marginTop: 4 }}>
-                      <Tag 
+                      <Tag
                         color={STATUS_COLORS[viewingExpense.status].color}
-                        style={{ 
+                        style={{
                           backgroundColor: STATUS_COLORS[viewingExpense.status].bg,
                           border: `1px solid ${STATUS_COLORS[viewingExpense.status].border}`,
                           borderRadius: 8,
@@ -1247,7 +1247,7 @@ export default function ExpensesPage() {
                     </div>
                   </div>
                 </Col>
-                
+
                 <Col span={12}>
                   <div>
                     <span style={{ color: '#666', fontSize: '14px', fontWeight: 500 }}>Date</span>
@@ -1256,7 +1256,7 @@ export default function ExpensesPage() {
                     </div>
                   </div>
                 </Col>
-                
+
                 <Col span={12}>
                   <div>
                     <span style={{ color: '#666', fontSize: '14px', fontWeight: 500 }}>Category</span>
@@ -1295,13 +1295,13 @@ export default function ExpensesPage() {
                     <div>
                       <span style={{ color: '#666', fontSize: '14px', fontWeight: 500 }}>Attachment</span>
                       <div style={{ marginTop: 8 }}>
-                        <Button 
+                        <Button
                           icon={<DownloadOutlined />}
                           onClick={() => {
                             if (viewingExpense.attachment_url) {
                               // Check if it's a full URL or a path
-                              const url = viewingExpense.attachment_url.startsWith('http') 
-                                ? viewingExpense.attachment_url 
+                              const url = viewingExpense.attachment_url.startsWith('http')
+                                ? viewingExpense.attachment_url
                                 : `http://localhost:8000${viewingExpense.attachment_url}`;
                               window.open(url, '_blank');
                             }
@@ -1319,8 +1319,8 @@ export default function ExpensesPage() {
                   <Col span={24}>
                     <div>
                       <span style={{ color: '#666', fontSize: '14px', fontWeight: 500 }}>Notes</span>
-                      <div style={{ 
-                        fontSize: '16px', 
+                      <div style={{
+                        fontSize: '16px',
                         marginTop: 4,
                         padding: '12px',
                         backgroundColor: '#f9f9f9',
@@ -1384,7 +1384,7 @@ export default function ExpensesPage() {
                     Edit
                   </Button>
                 )}
-                
+
                 {viewingExpense.status === "PENDING" && (
                   <Button
                     type="primary"
@@ -1393,8 +1393,8 @@ export default function ExpensesPage() {
                       setViewDrawerOpen(false);
                       handleApproveExpense(viewingExpense);
                     }}
-                    style={{ 
-                      backgroundColor: '#52c41a', 
+                    style={{
+                      backgroundColor: '#52c41a',
                       borderColor: '#52c41a',
                       borderRadius: 8
                     }}
@@ -1402,7 +1402,7 @@ export default function ExpensesPage() {
                     Approve
                   </Button>
                 )}
-                
+
                 {(viewingExpense.status === "APPROVED" || viewingExpense.status === "PENDING") && (
                   <Button
                     type="primary"
@@ -1416,7 +1416,7 @@ export default function ExpensesPage() {
                     Pay Expense
                   </Button>
                 )}
-                
+
                 {viewingExpense.status === "PAID" && (
                   <Button
                     icon={<UndoOutlined />}
@@ -1424,8 +1424,8 @@ export default function ExpensesPage() {
                       setViewDrawerOpen(false);
                       handleUndoPayment(viewingExpense);
                     }}
-                    style={{ 
-                      borderColor: '#fa8c16', 
+                    style={{
+                      borderColor: '#fa8c16',
                       color: '#fa8c16',
                       borderRadius: 8
                     }}
@@ -1433,7 +1433,7 @@ export default function ExpensesPage() {
                     Undo Payment
                   </Button>
                 )}
-                
+
                 <Button
                   danger
                   icon={<DeleteOutlined />}
@@ -1481,7 +1481,7 @@ export default function ExpensesPage() {
             label={<span style={{ fontWeight: 500 }}>Date Range</span>}
             rules={[{ required: true, message: "Please select date range" }]}
           >
-            <RangePicker 
+            <RangePicker
               style={{ width: '100%', borderRadius: 8 }}
               size="large"
               format="YYYY-MM-DD"
@@ -1511,9 +1511,9 @@ export default function ExpensesPage() {
 
           <Divider />
 
-          <div style={{ 
-            padding: '16px', 
-            background: '#f0f9ff', 
+          <div style={{
+            padding: '16px',
+            background: '#f0f9ff',
             borderRadius: 8,
             marginBottom: 20
           }}>
@@ -1530,13 +1530,13 @@ export default function ExpensesPage() {
 
           <Form.Item style={{ marginBottom: 0 }}>
             <Space>
-              <Button 
-                type="primary" 
+              <Button
+                type="primary"
                 htmlType="submit"
                 size="large"
                 loading={exporting}
                 icon={<DownloadOutlined />}
-                style={{ 
+                style={{
                   borderRadius: 8,
                   background: 'linear-gradient(135deg, #52c41a 0%, #95de64 100%)',
                   border: 'none',
@@ -1545,7 +1545,7 @@ export default function ExpensesPage() {
               >
                 Export
               </Button>
-              <Button 
+              <Button
                 onClick={() => {
                   setExportDrawerOpen(false);
                   exportForm.resetFields();
