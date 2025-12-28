@@ -1,0 +1,12 @@
+venv/
+flash_erp.db
+uploads/
+*.db
+*.csv
+*.txt
+*.pdf
+*.png
+*.jpg
+*.jpeg
+__pycache__/
+.pytest_cache/
