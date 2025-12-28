@@ -217,9 +217,9 @@ export default function EditEmployeePage() {
   }
 
   return (
-    <div style={{ padding: 12, background: "#f5f5f5", minHeight: "100vh" }}>
+    <div style={{ padding: 12, background: "transparent", minHeight: "100vh" }}>
       {/* Header */}
-      <Card size="small" style={{ marginBottom: 8 }}>
+      <Card size="small" bordered={true} style={{ marginBottom: 8, backgroundColor: "transparent" }}>
         <Row justify="space-between" align="middle">
           <Col>
             <Space>
@@ -238,7 +238,7 @@ export default function EditEmployeePage() {
         <Row gutter={[8, 8]}>
           {/* Avatar + Basic Info */}
           <Col xs={24} lg={8}>
-            <Card size="small" title={<><UserOutlined /> Basic Info</>}>
+            <Card size="small" bordered={true} title={<><UserOutlined /> Basic Info</>} style={{ backgroundColor: "transparent" }}>
               {/* Avatar Upload */}
               <div style={{ textAlign: "center", marginBottom: 12 }}>
                 <Upload
@@ -282,7 +282,7 @@ export default function EditEmployeePage() {
 
           {/* Identity & Docs with Attachments */}
           <Col xs={24} lg={8}>
-            <Card size="small" title={<><IdcardOutlined /> Identity & Docs</>}>
+            <Card size="small" bordered={true} title={<><IdcardOutlined /> Identity & Docs</>} style={{ backgroundColor: "transparent" }}>
               <Row gutter={[8, 0]}>
                 <Col span={16}><Form.Item name="cnic" label="CNIC" style={{marginBottom:8}}><Input /></Form.Item></Col>
                 <Col span={8} style={{display:"flex",alignItems:"flex-end",paddingBottom:8}}>
@@ -306,7 +306,7 @@ export default function EditEmployeePage() {
 
           {/* Contact & Verification with Attachments */}
           <Col xs={24} lg={8}>
-            <Card size="small" title={<><PhoneOutlined /> Contact & Verification</>}>
+            <Card size="small" bordered={true} title={<><PhoneOutlined /> Contact & Verification</>} style={{ backgroundColor: "transparent" }}>
               <Row gutter={[8, 0]}>
                 <Col span={12}><Form.Item name="mobile_no" label="Mobile" style={{marginBottom:8}}><Input /></Form.Item></Col>
                 <Col span={12}><Form.Item name="home_contact" label="Home" style={{marginBottom:8}}><Input /></Form.Item></Col>
@@ -334,7 +334,7 @@ export default function EditEmployeePage() {
 
           {/* Address */}
           <Col xs={24} lg={8}>
-            <Card size="small" title={<><HomeOutlined /> Address</>}>
+            <Card size="small" bordered={true} title={<><HomeOutlined /> Address</>} style={{ backgroundColor: "transparent" }}>
               <Row gutter={[8, 0]}>
                 <Col span={12}><Form.Item name="village" label="Village" style={{marginBottom:8}}><Input /></Form.Item></Col>
                 <Col span={12}><Form.Item name="post_office" label="Post Office" style={{marginBottom:8}}><Input /></Form.Item></Col>
@@ -348,7 +348,7 @@ export default function EditEmployeePage() {
 
           {/* Other */}
           <Col xs={24} lg={8}>
-            <Card size="small" title={<><FileTextOutlined /> Other</>}>
+            <Card size="small" bordered={true} title={<><FileTextOutlined /> Other</>} style={{ backgroundColor: "transparent" }}>
               <Row gutter={[8, 0]}>
                 <Col span={8}><Form.Item name="status2" label="Status 2" style={{marginBottom:8}}><Input /></Form.Item></Col>
                 <Col span={8}><Form.Item name="unit2" label="Unit 2" style={{marginBottom:8}}><Input /></Form.Item></Col>
@@ -364,7 +364,9 @@ export default function EditEmployeePage() {
           <Col xs={24} lg={8}>
             <Card 
               size="small" 
+              bordered={true}
               title={<><BankOutlined /> Bank Accounts</>}
+              style={{ backgroundColor: "transparent" }}
               extra={<Button size="small" icon={<PlusOutlined />} onClick={addBankAccount}>Add</Button>}
             >
               {bankAccounts.length === 0 ? (

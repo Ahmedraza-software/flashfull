@@ -64,7 +64,14 @@ async function request<T>(
   }
 
   const text = await res.text();
-  const data = text ? (JSON.parse(text) as unknown) : null;
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text) as unknown;
+    } catch {
+      data = text;
+    }
+  }
 
   if (!res.ok) {
     let msg = `Request failed (${res.status})`;
@@ -74,6 +81,8 @@ async function request<T>(
       else if (maybeDetail !== undefined && maybeDetail !== null) {
         msg = String(maybeDetail);
       }
+    } else if (typeof data === "string" && data.trim()) {
+      msg = data;
     }
     throw new ApiError(msg, res.status, data);
   }

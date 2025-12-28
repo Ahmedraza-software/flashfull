@@ -11,6 +11,7 @@ import {
   List,
   Modal,
   message,
+  notification,
   Row,
   Segmented,
   Select,
@@ -19,6 +20,7 @@ import {
   Tag,
   Table,
   Typography,
+  Tooltip,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -30,6 +32,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import NotificationDropdown from "@/components/NotificationDropdown";
 import type {
   AttendanceBulkUpsert,
   AttendanceListResponse,
@@ -125,6 +128,7 @@ export default function AttendancePage() {
   const [leaveInfoOpen, setLeaveInfoOpen] = useState(false);
   const [leaveInfoLoading, setLeaveInfoLoading] = useState(false);
   const [leaveInfo, setLeaveInfo] = useState<LeavePeriodOut | null>(null);
+  const [editingLeave, setEditingLeave] = useState(false);
 
   const [departments, setDepartments] = useState<string[]>([]);
   const [designations, setDesignations] = useState<string[]>([]);
@@ -223,7 +227,8 @@ export default function AttendancePage() {
       const res = await api.get<LeavePeriodAlert[]>("/api/leave-periods/alerts", {
         query: { as_of: asOf },
       });
-      setLeaveAlerts(Array.isArray(res) ? res : []);
+      const alerts = Array.isArray(res) ? res : [];
+      setLeaveAlerts(alerts);
     } catch (e: unknown) {
       setLeaveAlerts([]);
     } finally {
@@ -415,20 +420,32 @@ export default function AttendancePage() {
 
   const exportPdf = useCallback(async () => {
     try {
+      const token = localStorage.getItem("access_token");
       const dateStr = fromDate.format("YYYY-MM-DD");
-      const url = singleDayMode
-        ? `${API_BASE_URL}/api/attendance/export/pdf?date=${encodeURIComponent(dateStr)}`
-        : `${API_BASE_URL}/api/attendance/export/pdf?from_date=${encodeURIComponent(
-            fromDate.format("YYYY-MM-DD")
-          )}&to_date=${encodeURIComponent(toDate.format("YYYY-MM-DD"))}`;
-      const res = await fetch(url);
+      const baseUrl = `${API_BASE_URL}/api/attendance/export/pdf`;
+      const params = new URLSearchParams();
+      if (singleDayMode) {
+        params.set("date", dateStr);
+      } else {
+        params.set("from_date", fromDate.format("YYYY-MM-DD"));
+        params.set("to_date", toDate.format("YYYY-MM-DD"));
+      }
+      if (department) params.set("department", department);
+      if (designation) params.set("designation", designation);
+      const q = search.trim();
+      if (q) params.set("search", q);
+      const url = `${baseUrl}?${params.toString()}`;
+      const res = await fetch(url, {
+        method: "GET",
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
       if (!res.ok) throw new Error(`PDF export failed (${res.status})`);
       const blob = await res.blob();
       downloadBlob(blob, singleDayMode ? `attendance_${dateStr}.pdf` : `attendance_${fromDate.format("YYYY-MM")}.pdf`);
     } catch (e: unknown) {
       msg.error(errorMessage(e, "PDF export failed"));
     }
-  }, [fromDate, msg, singleDayMode, toDate]);
+  }, [department, designation, fromDate, msg, search, singleDayMode, toDate]);
 
   const exportCsv = useCallback(() => {
     const dateStr = fromDate.format("YYYY-MM-DD");
@@ -494,18 +511,55 @@ export default function AttendancePage() {
         reason: leaveReason.trim() ? leaveReason.trim() : null,
       };
 
-      await api.post<any>("/api/leave-periods/", payload);
-      msg.success("Long leave saved");
+      if (editingLeave && leaveInfo) {
+        // Update existing leave period
+        await api.put<any>(`/api/leave-periods/${leaveInfo.id}`, payload);
+        msg.success("Long leave updated");
+      } else {
+        // Create new leave period
+        await api.post<any>("/api/leave-periods/", payload);
+        msg.success("Long leave saved");
+      }
+      
       setLeaveModalOpen(false);
+      setEditingLeave(false);
       await load();
       void loadSummary();
       void loadLeaveAlerts();
     } catch (e: unknown) {
-      msg.error(errorMessage(e, "Failed to save long leave"));
+      msg.error(errorMessage(e, `Failed to ${editingLeave ? 'update' : 'save'} long leave`));
     } finally {
       setLeaveSaving(false);
     }
-  }, [leaveEmployeeId, leaveRange, leaveReason, leaveType, load, loadLeaveAlerts, loadSummary, msg]);
+  }, [leaveEmployeeId, leaveRange, leaveReason, leaveType, editingLeave, leaveInfo, load, loadLeaveAlerts, loadSummary, msg]);
+
+  const editLeavePeriod = useCallback(async () => {
+    if (!leaveInfo) return;
+    
+    // Open the leave modal with current data for editing
+    setLeaveEmployeeId(leaveInfo.employee_id);
+    setLeaveRange([dayjs(leaveInfo.from_date), dayjs(leaveInfo.to_date)]);
+    setLeaveType(leaveInfo.leave_type as LeaveType);
+    setLeaveReason(leaveInfo.reason || "");
+    setEditingLeave(true);
+    setLeaveInfoOpen(false);
+    setLeaveModalOpen(true);
+  }, [leaveInfo]);
+
+  const deleteLeavePeriod = useCallback(async () => {
+    if (!leaveInfo) return;
+    
+    try {
+      await api.del(`/api/leave-periods/${leaveInfo.id}`);
+      msg.success("Leave period deleted");
+      setLeaveInfoOpen(false);
+      await load();
+      void loadSummary();
+      void loadLeaveAlerts();
+    } catch (e: unknown) {
+      msg.error(errorMessage(e, "Failed to delete leave period"));
+    }
+  }, [leaveInfo, load, loadLeaveAlerts, loadSummary, msg]);
 
   const openLeaveInfo = useCallback(
     async (employee_id: string) => {
@@ -551,7 +605,7 @@ export default function AttendancePage() {
             >
               {v}
             </Typography.Link>
-            {r.status === "leave" ? (
+            {r.status === "leave" || !!r.leave_type ? (
               <Tag
                 color={r.leave_type === "unpaid" ? "volcano" : "blue"}
                 style={{ cursor: "pointer" }}
@@ -639,11 +693,33 @@ export default function AttendancePage() {
         key: "long_leave",
         title: "Long Leave",
         width: 120,
-        render: (_, r) => (
-          <Button size="small" onClick={() => openLeaveModal(r.employee_id)} disabled={!singleDayMode}>
-            Long Leave
-          </Button>
-        ),
+        render: (_, r) => {
+          const isOnLeave = !!r.leave_type;
+          // Debug logging
+          console.log('Debug - Employee:', r.employee_id, 'Status:', r.status, 'Leave Type:', r.leave_type, 'IsOnLeave:', isOnLeave);
+          return (
+            <Tooltip 
+              title={
+                isOnLeave 
+                  ? "Edit Leave Button - Opens modal with current leave data for editing\nDelete Leave Button - Removes leave period completely\nDynamic Modal Title - Shows 'Edit Long Leave' when editing\nSmart Save/Update - Uses PUT for edits, POST for new leaves"
+                  : "Mark long leave for this employee"
+              }
+            >
+              <Button 
+                size="small" 
+                onClick={() => isOnLeave ? void openLeaveInfo(r.employee_id) : openLeaveModal(r.employee_id)} 
+                disabled={!singleDayMode}
+                style={{ 
+                  backgroundColor: isOnLeave ? '#ffccc7' : undefined,
+                  borderColor: isOnLeave ? '#ff7875' : undefined,
+                  color: isOnLeave ? '#cf1322' : undefined
+                }}
+              >
+                Long Leave
+              </Button>
+            </Tooltip>
+          );
+        },
       },
       {
         key: "leave_type",
@@ -767,12 +843,34 @@ export default function AttendancePage() {
       >
         <Space orientation="vertical" size={16} style={{ width: "100%" }}>
           <Modal
-            title="Mark Long Leave"
+            title={editingLeave ? "Edit Long Leave" : "Mark Long Leave"}
             open={leaveModalOpen}
-            onCancel={() => setLeaveModalOpen(false)}
-            onOk={() => void submitLeavePeriod()}
-            okText="Save"
-            confirmLoading={leaveSaving}
+            onCancel={() => {
+              setLeaveModalOpen(false);
+              setEditingLeave(false);
+            }}
+            footer={
+              <Space>
+                {editingLeave && (
+                  <Button danger onClick={() => void deleteLeavePeriod()}>
+                    Delete Leave
+                  </Button>
+                )}
+                <Button onClick={() => {
+                  setLeaveModalOpen(false);
+                  setEditingLeave(false);
+                }}>
+                  Cancel
+                </Button>
+                <Button 
+                  type="primary" 
+                  onClick={() => void submitLeavePeriod()}
+                  loading={leaveSaving}
+                >
+                  {editingLeave ? "Update" : "Save"}
+                </Button>
+              </Space>
+            }
             destroyOnClose
           >
             <Space direction="vertical" style={{ width: "100%" }} size={12}>
@@ -817,7 +915,25 @@ export default function AttendancePage() {
             title="Long Leave Details"
             open={leaveInfoOpen}
             onCancel={() => setLeaveInfoOpen(false)}
-            footer={null}
+            footer={
+              leaveInfo ? (
+                <Space>
+                  <Button onClick={() => void editLeavePeriod()}>
+                    Edit Leave
+                  </Button>
+                  <Button danger onClick={() => void deleteLeavePeriod()}>
+                    Delete Leave
+                  </Button>
+                  <Button onClick={() => setLeaveInfoOpen(false)}>
+                    Close
+                  </Button>
+                </Space>
+              ) : (
+                <Button onClick={() => setLeaveInfoOpen(false)}>
+                  Close
+                </Button>
+              )
+            }
             destroyOnClose
           >
             <Space direction="vertical" style={{ width: "100%" }} size={8}>
@@ -844,29 +960,6 @@ export default function AttendancePage() {
             </Space>
           </Modal>
 
-          {leaveAlertsLoading || leaveAlerts.length > 0 ? (
-            <Card size="small" style={{ borderRadius: 0 }}>
-              <Space direction="vertical" style={{ width: "100%" }} size={8}>
-                <Typography.Text strong>Long Leave Alerts</Typography.Text>
-                <List
-                  size="small"
-                  loading={leaveAlertsLoading}
-                  dataSource={leaveAlerts}
-                  renderItem={(a) => (
-                    <List.Item>
-                      <Alert
-                        type="warning"
-                        showIcon
-                        message={`Employee ${a.employee_id} leave ended (${a.to_date})`}
-                        description={a.message}
-                      />
-                    </List.Item>
-                  )}
-                />
-              </Space>
-            </Card>
-          ) : null}
-
           <Row gutter={[12, 12]} align="middle">
             <Col flex="auto">
               <Space size={12} wrap>
@@ -877,6 +970,13 @@ export default function AttendancePage() {
             </Col>
             <Col>
               <Space wrap>
+                <NotificationDropdown 
+                  alerts={leaveAlerts} 
+                  onClear={() => {
+                    setLeaveAlerts([]);
+                    notification.destroy();
+                  }}
+                />
                 <Button
                   icon={<ReloadOutlined />}
                   onClick={() => {
@@ -885,6 +985,11 @@ export default function AttendancePage() {
                   }}
                 >
                   Refresh
+                </Button>
+                <Button 
+                  onClick={() => notification.destroy()}
+                >
+                  Clear Notifications
                 </Button>
                 <Button icon={<DownloadOutlined />} onClick={() => void exportPdf()}>
                   Export PDF
@@ -905,19 +1010,19 @@ export default function AttendancePage() {
             </Col>
           </Row>
 
-          <Row gutter={[8, 8]} align="stretch">
+          <Row gutter={[12, 12]} align="stretch">
             <Col xs={12} sm={8} md={4}>
-              <Card size="small" style={{ borderRadius: 0 }} styles={{ body: { padding: 12 } }}>
+              <Card size="small" style={{ borderRadius: 0, height: "100%" }} styles={{ body: { padding: 12 } }}>
                 <Statistic title="Total" value={kpiRows.length} loading={loading} />
               </Card>
             </Col>
             <Col xs={12} sm={8} md={4}>
-              <Card size="small" style={{ borderRadius: 0 }} styles={{ body: { padding: 12 } }}>
+              <Card size="small" style={{ borderRadius: 0, height: "100%" }} styles={{ body: { padding: 12 } }}>
                 <Statistic title="Unmarked" value={statusCounts.unmarked} loading={loading} />
               </Card>
             </Col>
             <Col xs={12} sm={8} md={4}>
-              <Card size="small" style={{ borderRadius: 0 }} styles={{ body: { padding: 12 } }}>
+              <Card size="small" style={{ borderRadius: 0, height: "100%" }} styles={{ body: { padding: 12 } }}>
                 <Statistic
                   title="Present"
                   value={statusCounts.present}
@@ -927,7 +1032,7 @@ export default function AttendancePage() {
               </Card>
             </Col>
             <Col xs={12} sm={8} md={4}>
-              <Card size="small" style={{ borderRadius: 0 }} styles={{ body: { padding: 12 } }}>
+              <Card size="small" style={{ borderRadius: 0, height: "100%" }} styles={{ body: { padding: 12 } }}>
                 <Statistic
                   title="Absent"
                   value={statusCounts.absent}
@@ -937,12 +1042,12 @@ export default function AttendancePage() {
               </Card>
             </Col>
             <Col xs={12} sm={8} md={4}>
-              <Card size="small" style={{ borderRadius: 0 }} styles={{ body: { padding: 12 } }}>
+              <Card size="small" style={{ borderRadius: 0, height: "100%" }} styles={{ body: { padding: 12 } }}>
                 <Statistic title="Leave" value={statusCounts.leave} loading={loading} />
               </Card>
             </Col>
             <Col xs={12} sm={8} md={4}>
-              <Card size="small" style={{ borderRadius: 0 }} styles={{ body: { padding: 12 } }}>
+              <Card size="small" style={{ borderRadius: 0, height: "100%" }} styles={{ body: { padding: 12 } }}>
                 <Statistic title="Fine Total" value={fineTotal} loading={loading} />
               </Card>
             </Col>
@@ -976,6 +1081,7 @@ export default function AttendancePage() {
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by ID, name, department"
                 allowClear
+                style={{ width: "100%" }}
               />
             </Col>
             <Col xs={24} md={5}>
@@ -987,6 +1093,7 @@ export default function AttendancePage() {
                 showSearch
                 optionFilterProp="label"
                 options={departments.map((d) => ({ label: d, value: d }))}
+                style={{ width: "100%" }}
               />
             </Col>
             <Col xs={24} md={5}>
@@ -998,6 +1105,7 @@ export default function AttendancePage() {
                 showSearch
                 optionFilterProp="label"
                 options={designations.map((d) => ({ label: d, value: d }))}
+                style={{ width: "100%" }}
               />
             </Col>
           </Row>

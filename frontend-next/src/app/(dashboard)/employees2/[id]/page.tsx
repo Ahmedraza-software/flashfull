@@ -185,7 +185,7 @@ export default function EmployeeDetailPage() {
   };
 
   return (
-    <div style={{ padding: 16, background: "#f5f5f5", minHeight: "100vh" }}>
+    <div style={{ padding: 16, background: "transparent", minHeight: "100vh" }}>
       {/* Header */}
       <Card size="small" style={{ marginBottom: 12 }}>
         <Row justify="space-between" align="middle">
@@ -233,6 +233,7 @@ export default function EmployeeDetailPage() {
           <Card 
             size="small" 
             title={<><UserOutlined /> Basic Information</>}
+            style={{ height: "100%", backgroundColor: "white" }}
             style={{ height: "100%" }}
           >
             <Descriptions column={2} size="small" colon={false}>

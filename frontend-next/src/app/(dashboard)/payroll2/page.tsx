@@ -10,6 +10,7 @@ import {
   InputNumber,
   message,
   Row,
+  Select,
   Space,
   Statistic,
   Table,
@@ -38,6 +39,9 @@ type Payroll2Row = {
   serial_no?: string;
   fss_no?: string;
   eobi_no?: string;
+  cnic?: string;
+  bank_name?: string;
+  bank_account_number?: string;
   base_salary: number;
   working_days: number;
   day_rate: number;
@@ -149,18 +153,40 @@ export default function Payroll2Page() {
 
   const [rows, setRows] = useState<Payroll2Row[]>([]);
   const [search, setSearch] = useState("");
+  const [bankFilter, setBankFilter] = useState<string | undefined>();
   const [summaryData, setSummaryData] = useState<Payroll2Response["summary"] | null>(null);
 
   const monthLabel = useMemo(() => toDate.format("YYYY-MM"), [toDate]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
+    const bank = bankFilter?.trim().toLowerCase();
+    
     return rows.filter((r) => {
-      const hay = `${r.employee_id} ${r.name} ${r.serial_no || ""} ${r.fss_no || ""}`.toLowerCase();
-      return hay.includes(q);
+      // Search filter
+      if (q) {
+        const hay = `${r.employee_id} ${r.name} ${r.serial_no || ""} ${r.fss_no || ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      
+      // Bank filter
+      if (bank) {
+        const bankName = (r.bank_name || "").toLowerCase();
+        if (!bankName.includes(bank)) return false;
+      }
+      
+      return true;
     });
-  }, [rows, search]);
+  }, [rows, search, bankFilter]);
+
+  // Get unique bank names for filter dropdown
+  const uniqueBanks = useMemo(() => {
+    const banks = new Set<string>();
+    rows.forEach(r => {
+      if (r.bank_name) banks.add(r.bank_name);
+    });
+    return Array.from(banks).sort();
+  }, [rows]);
 
   const summary = useMemo(() => {
     const totalGross = rows.reduce((a, r) => a + r.gross_pay, 0);
@@ -262,18 +288,39 @@ export default function Payroll2Page() {
 
   const exportCsv = useCallback(() => {
     const headers = [
-      "#", "FSS No.", "Name", "Salary", "Presents", "Pre Days", "Cur Days", "Leave Enc.",
-      "Total Days", "Total Salary", "OT Rate", "OT Amount", "Allow/Other", "Gross",
-      "EOBI#", "EOBI", "Tax", "Fine(Att)", "Fine/Adv", "Net", "Remarks", "Bank/Cash"
+      "#", "FSS No.", "Employee Name", "CNIC", "Bank Name", "Bank Account Number", "Salary/Month", "Presents", "Total", "Pre Days", "Cur Days", "Leave Enc.", "Total Days", "Total Salary", "OT Rate", "OT", "OT Amount", "Allow./Other", "Gross Salary", "EOBI", "#", "EOBI", "Tax", "Fine (Att)", "Fine/Adv.", "Net Payable", "Remarks", "Bank/Cash"
     ];
     const lines = [headers.join(",")];
     for (const r of rows) {
       lines.push([
-        r.serial_no || "", r.fss_no || "", r.name, r.base_salary, r.presents_total,
-        r.pre_days, r.cur_days, r.leave_encashment_days, r.total_days, r.total_salary,
-        r.overtime_rate, r.overtime_pay, r.allow_other, r.gross_pay,
-        r.eobi_no || "", r.eobi, r.tax, r.fine_deduction, r.fine_adv, r.net_pay,
-        r.remarks || "", r.bank_cash || ""
+        r.serial_no || "", 
+        r.fss_no || "", 
+        r.name, 
+        r.cnic || "", 
+        r.bank_name || "", 
+        r.bank_account_number || "", 
+        r.base_salary, 
+        r.presents_total,
+        r.total_days,
+        r.pre_days, 
+        r.cur_days, 
+        r.leave_encashment_days, 
+        r.total_days, 
+        r.total_salary,
+        r.overtime_rate, 
+        r.overtime_minutes || 0,
+        r.overtime_pay, 
+        r.allow_other, 
+        r.gross_pay,
+        r.eobi_no || "", 
+        "#",
+        r.eobi, 
+        r.tax, 
+        r.fine_deduction, 
+        r.fine_adv, 
+        r.net_pay,
+        r.remarks || "", 
+        r.bank_cash || ""
       ].map(csvEscape).join(","));
     }
     const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
@@ -284,19 +331,67 @@ export default function Payroll2Page() {
     try {
       msg.loading({ content: "Generating PDF...", key: "pdf" });
       const token = typeof window !== "undefined" ? window.localStorage.getItem("access_token") : null;
-      const response = await fetch(`${API_BASE_URL}/api/payroll2/export-pdf?from_date=${fromDate.format("YYYY-MM-DD")}&to_date=${toDate.format("YYYY-MM-DD")}&month=${monthLabel}`, {
+      
+      // Map rows to match backend model structure
+      const mappedRows = rows.map(r => ({
+        serial_no: r.serial_no,
+        fss_no: r.fss_no,
+        name: r.name,
+        base_salary: r.base_salary,
+        presents_total: r.presents_total,
+        pre_days: r.pre_days,
+        cur_days: r.cur_days,
+        leave_encashment_days: r.leave_encashment_days,
+        total_days: r.total_days,
+        total_salary: r.total_salary,
+        overtime_rate: r.overtime_rate,
+        overtime_minutes: r.overtime_minutes || 0,
+        overtime_pay: r.overtime_pay,
+        allow_other: r.allow_other,
+        gross_pay: r.gross_pay,
+        eobi_no: r.eobi_no,
+        eobi: r.eobi,
+        tax: r.tax,
+        fine_deduction: r.fine_deduction,
+        fine_adv: r.fine_adv,
+        net_pay: r.net_pay,
+        remarks: r.remarks,
+        bank_cash: r.bank_cash,
+        // Include new fields for backend
+        cnic: r.cnic || "",
+        bank_name: r.bank_name || "",
+        bank_account_number: r.bank_account_number || "",
+      }));
+      
+      console.log('Sending mapped rows:', mappedRows.length, 'rows');
+      console.log('Sample row data:', mappedRows[0]);
+      
+      const url = `${API_BASE_URL}/api/payroll2/export-pdf?from_date=${fromDate.format("YYYY-MM-DD")}&to_date=${toDate.format("YYYY-MM-DD")}&month=${monthLabel}`;
+      console.log('Request URL:', url);
+      
+      const response = await fetch(url, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
           ...(token ? { "Authorization": `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ rows }),
+        body: JSON.stringify({ rows: mappedRows }),
       });
-      if (!response.ok) throw new Error("Failed to generate PDF");
+      
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        throw new Error(`Failed to generate PDF: ${response.status} - ${errorText}`);
+      }
+      
       const blob = await response.blob();
       downloadBlob(blob, `payroll2_${monthLabel}.pdf`);
       msg.success({ content: "PDF downloaded", key: "pdf" });
     } catch (e) {
+      console.error('PDF export error:', e);
       msg.error({ content: errorMessage(e, "Failed to export PDF"), key: "pdf" });
     }
   }, [fromDate, monthLabel, msg, rows, toDate]);
@@ -329,6 +424,30 @@ export default function Payroll2Page() {
         ellipsis: true,
         render: (v: string) => (
           <Typography.Text style={{ fontSize: 11 }} ellipsis={{ tooltip: v }}>{v}</Typography.Text>
+        ),
+      },
+      {
+        key: "cnic",
+        title: "CNIC",
+        width: 120,
+        render: (_: unknown, r: Payroll2Row) => (
+          <Typography.Text style={{ fontSize: 11 }}>{r.cnic || ""}</Typography.Text>
+        ),
+      },
+      {
+        key: "bank_name",
+        title: "Bank Name",
+        width: 120,
+        render: (_: unknown, r: Payroll2Row) => (
+          <Typography.Text style={{ fontSize: 11 }}>{r.bank_name || "-"}</Typography.Text>
+        ),
+      },
+      {
+        key: "bank_account_number",
+        title: "Bank Account Number",
+        width: 140,
+        render: (_: unknown, r: Payroll2Row) => (
+          <Typography.Text style={{ fontSize: 11 }}>{r.bank_account_number || "-"}</Typography.Text>
         ),
       },
       {
@@ -602,7 +721,7 @@ export default function Payroll2Page() {
     <>
       {msgCtx}
       <Card variant="borderless" className="flash-card" style={{ overflowX: "hidden" }} styles={{ body: { padding: 12 } }}>
-        <Space direction="vertical" size={16} style={{ width: "100%" }}>
+        <Space orientation="vertical" size={16} style={{ width: "100%" }}>
           <Row gutter={[12, 12]} align="middle">
             <Col flex="auto">
               <Space size={10} wrap>
@@ -625,9 +744,9 @@ export default function Payroll2Page() {
                 <Dropdown
                   menu={{
                     items: [
-                      { key: "csv", label: "Export CSV", icon: <FileExcelOutlined />, onClick: exportCsv },
-                      { key: "pdf", label: "Export PDF", icon: <FilePdfOutlined />, onClick: () => void exportPdf() },
-                    ],
+                      { key: "csv", label: "Export CSV", icon: <FileExcelOutlined />, onClick: () => exportCsv() },
+                      { key: "pdf", label: "Export PDF", icon: <FilePdfOutlined />, onClick: () => exportPdf() },
+                    ] as const,
                   }}
                 >
                   <Button icon={<DownloadOutlined />}>
@@ -659,6 +778,14 @@ export default function Payroll2Page() {
                     allowClear
                     prefix={<SearchOutlined style={{ color: "rgba(0,0,0,0.35)" }} />}
                     style={{ width: 320 }}
+                  />
+                  <Select
+                    value={bankFilter}
+                    onChange={setBankFilter}
+                    placeholder="Filter by Bank"
+                    allowClear
+                    style={{ width: 200 }}
+                    options={uniqueBanks.map(bank => ({ label: bank, value: bank }))}
                   />
                 </div>
               </Col>
@@ -702,8 +829,9 @@ export default function Payroll2Page() {
                 <Statistic 
                   title="Total Presents" 
                   value={summary.totalPresents} 
-                  valueStyle={{ color: "#52c41a" }}
-                  styles={{ content: { fontSize: 16, lineHeight: "20px" }}} 
+                  styles={{ 
+                    content: { color: "#52c41a", fontSize: 16, lineHeight: "20px" }
+                  }} 
                 />
               </Card>
             </Col>

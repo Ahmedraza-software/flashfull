@@ -307,8 +307,6 @@ export default function DashboardShell({
 
   const [openKeys, setOpenKeys] = useState<string[]>([activeRootKey]);
 
-  const avatarUrl = "https://i.pravatar.cc/96?img=12";
-
   return (
     <Layout
       style={{
@@ -472,20 +470,13 @@ export default function DashboardShell({
             padding: "0 24px",
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
+            justifyContent: "flex-start",
             height: 56,
           }}
         >
           <Typography.Title level={3} style={{ margin: 0 }}>
             {greeting}
           </Typography.Title>
-          <Avatar
-            size={36}
-            style={{ background: token.colorPrimary, cursor: "pointer" }}
-            src={avatarUrl}
-          >
-            U
-          </Avatar>
         </Header>
 
         <Content

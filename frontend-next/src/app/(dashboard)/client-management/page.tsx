@@ -21,6 +21,8 @@ import {
   Tag,
   Typography,
   Descriptions,
+  Statistic,
+  AutoComplete,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
@@ -32,11 +34,14 @@ import {
   FileTextOutlined,
   TeamOutlined,
   EnvironmentOutlined,
+  SearchOutlined,
 } from "@ant-design/icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { api } from "@/lib/api";
 import { API_BASE_URL } from "@/lib/config";
+
+const { RangePicker } = DatePicker;
 
 // Types
 type Client = {
@@ -110,6 +115,14 @@ export default function ClientManagementPage() {
   const [msg, msgCtx] = message.useMessage();
   const [loading, setLoading] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
+  const [statistics, setStatistics] = useState<any>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  
+  // Search and filter states
+  const [searchText, setSearchText] = useState("");
+  const [filterType, setFilterType] = useState<string>("");
+  const [filterLocation, setFilterLocation] = useState<string>("");
+  const [filterStatus, setFilterStatus] = useState<string>("");
   
   // Client drawer
   const [clientDrawerOpen, setClientDrawerOpen] = useState(false);
@@ -121,6 +134,9 @@ export default function ClientManagementPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<ClientDetail | null>(null);
+
+  const [contractStatusFilter, setContractStatusFilter] = useState<string>("Active");
+  const [dateRangeFilter, setDateRangeFilter] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
   
   // Focal person drawer
   const [focalDrawerOpen, setFocalDrawerOpen] = useState(false);
@@ -157,9 +173,47 @@ export default function ClientManagementPage() {
     }
   }, [msg]);
 
+  // Load statistics
+  const loadStatistics = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const data = await api.get("/api/client-management/statistics");
+      setStatistics(data);
+    } catch (e) {
+      msg.error(errorMessage(e, "Failed to load statistics"));
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [msg]);
+
   useEffect(() => {
     void loadClients();
-  }, [loadClients]);
+    void loadStatistics();
+  }, [loadClients, loadStatistics]);
+
+  // Filter clients based on search and filters
+  const filteredClients = useMemo(() => {
+    return clients.filter(client => {
+      // Search filter
+      const matchesSearch = !searchText || 
+        client.client_name.toLowerCase().includes(searchText.toLowerCase()) ||
+        client.client_code.toLowerCase().includes(searchText.toLowerCase());
+      
+      // Type filter (case-insensitive partial match)
+      const matchesType = !filterType || 
+        (client.client_type && client.client_type.toLowerCase().includes(filterType.toLowerCase()));
+      
+      // Location filter (case-insensitive partial match)
+      const locationText = (client.location || client.address || "").toLowerCase();
+      const matchesLocation = !filterLocation || locationText.includes(filterLocation.toLowerCase());
+      
+      // Status filter (case-insensitive partial match)
+      const matchesStatus = !filterStatus || 
+        (client.status && client.status.toLowerCase().includes(filterStatus.toLowerCase()));
+      
+      return matchesSearch && matchesType && matchesLocation && matchesStatus;
+    });
+  }, [clients, searchText, filterType, filterLocation, filterStatus]);
 
   // Open client detail
   const openClientDetail = useCallback(async (clientId: number) => {
@@ -168,6 +222,8 @@ export default function ClientManagementPage() {
     try {
       const d = await api.get<ClientDetail>(`/api/client-management/clients/${clientId}`);
       setDetail(d);
+      setContractStatusFilter("Active");
+      setDateRangeFilter([null, null]);
     } catch (e) {
       msg.error(errorMessage(e, "Failed to load client"));
       setDetail(null);
@@ -175,6 +231,39 @@ export default function ClientManagementPage() {
       setDetailLoading(false);
     }
   }, [msg]);
+
+  const filteredDetailContracts = useMemo(() => {
+    let list = detail?.contracts || [];
+    
+    // Apply status filter
+    const statusFilter = (contractStatusFilter || "").trim();
+    if (statusFilter && statusFilter !== "All") {
+      list = list.filter(c => String(c.status || "").toLowerCase() === statusFilter.toLowerCase());
+    }
+    
+    // Apply date range filter if either start or end date is set
+    const [startDate, endDate] = dateRangeFilter;
+    if (startDate || endDate) {
+      list = list.filter(contract => {
+        const contractDate = contract.start_date ? dayjs(contract.start_date) : null;
+        if (!contractDate) return false;
+        
+        const isAfterStart = !startDate || contractDate.isSameOrAfter(startDate.startOf('day'));
+        const isBeforeEnd = !endDate || contractDate.isSameOrBefore(endDate.endOf('day'));
+        
+        return isAfterStart && isBeforeEnd;
+      });
+    }
+    
+    return list;
+  }, [contractStatusFilter, dateRangeFilter, detail?.contracts]);
+
+  const filteredDetailContractsTotal = useMemo(() => {
+    return filteredDetailContracts.reduce(
+      (sum, c) => sum + Number((c as any).monthly_cost ?? 0),
+      0
+    );
+  }, [filteredDetailContracts]);
 
   // Create client
   const openCreateClient = useCallback(() => {
@@ -405,10 +494,19 @@ export default function ClientManagementPage() {
         api.get<GuardAllocation[]>(`/api/client-management/contracts/${c.id}/allocations`),
         api.get<any[]>("/api/employees2"),
       ]);
-      setAllocations(Array.isArray(allocs) ? allocs : []);
+      const allocList = Array.isArray(allocs) ? allocs : [];
+
+      const guardList = Array.isArray(guards)
+        ? guards
+        : Array.isArray((guards as any)?.employees)
+          ? (guards as any).employees
+          : [];
+
+      setAllocations(allocList);
+
       // Filter to show only available guards (not allocated)
-      const allocatedIds = new Set((allocs || []).map((a: any) => a.employee_db_id));
-      setAvailableGuards((guards || []).filter((g: any) => !allocatedIds.has(g.id)));
+      const allocatedIds = new Set(allocList.map((a: any) => a.employee_db_id));
+      setAvailableGuards(guardList.filter((g: any) => !allocatedIds.has(g.id)));
     } catch (e) {
       msg.error(errorMessage(e, "Failed to load allocations"));
     } finally {
@@ -501,7 +599,12 @@ export default function ClientManagementPage() {
       ),
     },
     { title: "Type", dataIndex: "client_type", width: 120 },
-    { title: "Location", dataIndex: "location", width: 150 },
+    {
+      title: "Location",
+      dataIndex: "location",
+      width: 150,
+      render: (v, r) => v || r.address || "",
+    },
     {
       title: "Status",
       dataIndex: "status",
@@ -597,6 +700,50 @@ export default function ClientManagementPage() {
     <>
       {msgCtx}
       
+      {/* KPI Cards */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={24} sm={12} md={6}>
+          <Card loading={statsLoading}>
+            <Statistic
+              title="Total Clients"
+              value={statistics?.total_clients || 0}
+              prefix={<TeamOutlined />}
+              valueStyle={{ color: '#1890ff' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card loading={statsLoading}>
+            <Statistic
+              title="Active Clients"
+              value={statistics?.by_status?.active || 0}
+              prefix={<UserOutlined />}
+              valueStyle={{ color: '#52c41a' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card loading={statsLoading}>
+            <Statistic
+              title="Corporate Clients"
+              value={statistics?.by_type?.corporate || 0}
+              prefix={<FileTextOutlined />}
+              valueStyle={{ color: '#722ed1' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card loading={statsLoading}>
+            <Statistic
+              title="Islamabad Clients"
+              value={statistics?.by_location?.islamabad || 0}
+              prefix={<EnvironmentOutlined />}
+              valueStyle={{ color: '#fa8c16' }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
       {/* Main Client List */}
       <Card styles={{ body: { padding: 16 } }}>
         <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
@@ -611,11 +758,96 @@ export default function ClientManagementPage() {
             </Button>
           </Col>
         </Row>
+        
+        {/* Search and Filters */}
+        <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+          <Col xs={24} sm={12} md={8}>
+            <Input
+              placeholder="Search by client name or code..."
+              prefix={<SearchOutlined />}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              allowClear
+            />
+          </Col>
+          <Col xs={24} sm={12} md={4}>
+            <AutoComplete
+              placeholder="Filter by Type..."
+              value={filterType}
+              onChange={setFilterType}
+              allowClear
+              style={{ width: '100%' }}
+              options={[
+                { value: 'Corporate' },
+                { value: 'Government' },
+                { value: 'Individual' },
+              ]}
+              filterOption={(inputValue, option) =>
+                option!.value.toLowerCase().includes(inputValue.toLowerCase())
+              }
+            />
+          </Col>
+          <Col xs={24} sm={12} md={4}>
+            <AutoComplete
+              placeholder="Filter by Location..."
+              value={filterLocation}
+              onChange={setFilterLocation}
+              allowClear
+              style={{ width: '100%' }}
+              options={[
+                { value: 'Islamabad' },
+                { value: 'Rawalpindi' },
+                { value: 'Lahore' },
+                { value: 'Karachi' },
+                { value: 'Peshawar' },
+                { value: 'Multan' },
+                { value: 'KPK' },
+                { value: 'Sindh' },
+                { value: 'Azad Kashmir' },
+              ]}
+              filterOption={(inputValue, option) =>
+                option!.value.toLowerCase().includes(inputValue.toLowerCase())
+              }
+            />
+          </Col>
+          <Col xs={24} sm={12} md={4}>
+            <AutoComplete
+              placeholder="Filter by Status..."
+              value={filterStatus}
+              onChange={setFilterStatus}
+              allowClear
+              style={{ width: '100%' }}
+              options={[
+                { value: 'Active' },
+                { value: 'Inactive' },
+                { value: 'Blacklisted' },
+                { value: 'Lead' },
+                { value: 'On Hold' },
+                { value: 'Contract Expired' },
+                { value: 'Terminated' },
+              ]}
+              filterOption={(inputValue, option) =>
+                option!.value.toLowerCase().includes(inputValue.toLowerCase())
+              }
+            />
+          </Col>
+          <Col xs={24} sm={12} md={4}>
+            <Button onClick={() => {
+              setSearchText("");
+              setFilterType("");
+              setFilterLocation("");
+              setFilterStatus("");
+            }}>
+              Clear Filters
+            </Button>
+          </Col>
+        </Row>
+        
         <Table<Client>
           rowKey="id"
           size="small"
           loading={loading}
-          dataSource={clients}
+          dataSource={filteredClients}
           columns={clientColumns}
           pagination={{ pageSize: 10, showSizeChanger: true }}
         />
@@ -722,6 +954,14 @@ export default function ClientManagementPage() {
                     <Descriptions.Item label="Status">
                       <Tag color={detail.status === "Active" ? "green" : "default"}>{detail.status}</Tag>
                     </Descriptions.Item>
+                    <Descriptions.Item label="Total Monthly Cost">
+                      {formatMoney(
+                        (detail.contracts || []).reduce(
+                          (sum, c) => sum + Number((c as any).monthly_cost ?? 0),
+                          0
+                        )
+                      )}
+                    </Descriptions.Item>
                     <Descriptions.Item label="Location">{detail.location || "-"}</Descriptions.Item>
                     <Descriptions.Item label="Phone">{detail.phone || "-"}</Descriptions.Item>
                     <Descriptions.Item label="Email">{detail.email || "-"}</Descriptions.Item>
@@ -755,15 +995,55 @@ export default function ClientManagementPage() {
                 label: <><FileTextOutlined /> Contracts ({detail.contracts?.length || 0})</>,
                 children: (
                   <>
-                    <div style={{ marginBottom: 12, textAlign: "right" }}>
-                      <Button type="primary" size="small" icon={<PlusOutlined />} onClick={openCreateContract}>
-                        New Contract
-                      </Button>
-                    </div>
+                    <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
+                      <Col>
+                        <Space size={12}>
+                          <Typography.Text strong>Total Monthly Cost (shown):</Typography.Text>
+                          <Typography.Text>{formatMoney(filteredDetailContractsTotal)}</Typography.Text>
+                        </Space>
+                      </Col>
+                      <Col>
+                        <Space size={8}>
+                          <Select
+                            size="small"
+                            value={contractStatusFilter}
+                            onChange={setContractStatusFilter}
+                            style={{ width: 140 }}
+                            options={[
+                              { label: "All Status", value: "All" },
+                              { label: "Active", value: "Active" },
+                              { label: "Pending", value: "Pending" },
+                              { label: "Ended", value: "Ended" },
+                              { label: "Expired", value: "Expired" },
+                              { label: "Terminated", value: "Terminated" },
+                            ]}
+                          />
+                          <RangePicker
+                            size="small"
+                            style={{ width: 250 }}
+                            value={dateRangeFilter}
+                            onChange={(dates) => setDateRangeFilter(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])}
+                            placeholder={['Start Date', 'End Date']}
+                            allowClear
+                          />
+                          {(dateRangeFilter[0] || dateRangeFilter[1]) && (
+                            <Button 
+                              size="small" 
+                              onClick={() => setDateRangeFilter([null, null])}
+                            >
+                              Clear Dates
+                            </Button>
+                          )}
+                          <Button type="primary" size="small" icon={<PlusOutlined />} onClick={openCreateContract}>
+                            New Contract
+                          </Button>
+                        </Space>
+                      </Col>
+                    </Row>
                     <Table<Contract>
                       rowKey="id"
                       size="small"
-                      dataSource={detail.contracts || []}
+                      dataSource={filteredDetailContracts}
                       columns={contractColumns}
                       pagination={false}
                     />

@@ -1,24 +1,60 @@
-services:
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://neondb_owner:npg_4NSEdZDARsV7@ep-broad-resonance-a4rn7uze-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
-      - SECRET_KEY=u9#r2x!f4w@q8$k^d1p7m&c%0s6j*e_+l)h=3z(y5v-a
-      - ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
-    volumes:
-      - ./backend/uploads:/app/uploads
+version: '3.8'
 
-  frontend:
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: erp_postgres
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin@123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - erp_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Combined Frontend + Backend
+  erp_app:
     build:
-      context: ./frontend-next
+      context: .
       dockerfile: Dockerfile
+    container_name: erp_app
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:admin%40123@postgres:5432/postgres
+      SECRET_KEY: your-secret-key-here
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      ALGORITHM: HS256
+      NEXT_PUBLIC_API_URL: http://localhost:8000
     ports:
       - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - "8000:8000"
     depends_on:
-      - backend
+      postgres:
+        condition: service_healthy
+    networks:
+      - erp_network
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app/backend
+      - ./frontend-next:/app/frontend
+      - /app/backend/__pycache__
+      - /app/frontend/node_modules
+      - /app/frontend/.next
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  erp_network:
+    driver: bridge
