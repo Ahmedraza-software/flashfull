@@ -36,6 +36,8 @@ env/
 ENV/
 env.bak/
 venv.bak/
+venv313/
+venv_py313/
 
 # IDE
 .vscode/
