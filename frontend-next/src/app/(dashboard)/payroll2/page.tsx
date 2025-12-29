@@ -40,6 +40,7 @@ type Payroll2Row = {
   fss_no?: string;
   eobi_no?: string;
   cnic?: string;
+  mobile_no?: string;
   bank_name?: string;
   bank_account_number?: string;
   base_salary: number;
@@ -239,7 +240,7 @@ export default function Payroll2Page() {
         // Recalculate total_days = presents_total + leave_encashment_days
         const total_days = (updated.presents_total || 0) + (updated.leave_encashment_days || 0);
         const total_salary = total_days * r.day_rate;
-        const gross_pay = total_salary + r.overtime_rate + r.overtime_pay + (updated.allow_other || 0);
+        const gross_pay = total_salary + r.overtime_pay + (updated.allow_other || 0);
         const fine_adv = r.fine_deduction + r.advance_deduction + (updated.fine_adv_extra || 0);
         const net_pay = gross_pay - (updated.eobi || 0) - (updated.tax || 0) - fine_adv - r.late_deduction;
         
@@ -288,7 +289,7 @@ export default function Payroll2Page() {
 
   const exportCsv = useCallback(() => {
     const headers = [
-      "#", "FSS No.", "Employee Name", "CNIC", "Bank Name", "Bank Account Number", "Salary/Month", "Presents", "Total", "Pre Days", "Cur Days", "Leave Enc.", "Total Days", "Total Salary", "OT Rate", "OT", "OT Amount", "Allow./Other", "Gross Salary", "EOBI", "#", "EOBI", "Tax", "Fine (Att)", "Fine/Adv.", "Net Payable", "Remarks", "Bank/Cash"
+      "#", "FSS No.", "Employee Name", "CNIC", "Mobile", "Bank Name", "Bank Account Number", "Salary/Month", "Presents", "Paid Leave", "Total", "Pre Days", "Cur Days", "Leave Enc.", "Total Days", "Total Salary", "OT Rate", "OT", "OT Amount", "Allow./Other", "Gross Salary", "EOBI", "#", "EOBI", "Tax", "Fine (Att)", "Fine/Adv.", "Net Payable", "Remarks", "Bank/Cash"
     ];
     const lines = [headers.join(",")];
     for (const r of rows) {
@@ -297,10 +298,12 @@ export default function Payroll2Page() {
         r.fss_no || "", 
         r.name, 
         r.cnic || "", 
+        r.mobile_no || "",
         r.bank_name || "", 
         r.bank_account_number || "", 
         r.base_salary, 
         r.presents_total,
+        r.paid_leave_days,
         r.total_days,
         r.pre_days, 
         r.cur_days, 
@@ -338,7 +341,9 @@ export default function Payroll2Page() {
         fss_no: r.fss_no,
         name: r.name,
         base_salary: r.base_salary,
+        mobile_no: r.mobile_no || "",
         presents_total: r.presents_total,
+        paid_leave_days: r.paid_leave_days,
         pre_days: r.pre_days,
         cur_days: r.cur_days,
         leave_encashment_days: r.leave_encashment_days,
@@ -435,6 +440,14 @@ export default function Payroll2Page() {
         ),
       },
       {
+        key: "mobile_no",
+        title: "Mobile",
+        width: 110,
+        render: (_: unknown, r: Payroll2Row) => (
+          <Typography.Text style={{ fontSize: 11 }}>{r.mobile_no || ""}</Typography.Text>
+        ),
+      },
+      {
         key: "bank_name",
         title: "Bank Name",
         width: 120,
@@ -501,6 +514,17 @@ export default function Payroll2Page() {
             </Tooltip>
           );
         },
+      },
+      {
+        key: "paid_leave_days",
+        title: <div style={{ fontSize: 10, lineHeight: 1.05, textAlign: "center" }}>Paid<br />Leave</div>,
+        width: 55,
+        align: "center",
+        render: (_: unknown, r: Payroll2Row) => (
+          <Tag color={r.paid_leave_days > 0 ? "blue" : "default"} style={{ fontSize: 11 }}>
+            {r.paid_leave_days ?? 0}
+          </Tag>
+        ),
       },
       {
         key: "pre_days",
@@ -864,7 +888,7 @@ export default function Payroll2Page() {
             loading={loading}
             tableLayout="fixed"
             style={{ width: "100%" }}
-            scroll={{ x: 1800 }}
+            scroll={{ x: 2050 }}
             pagination={{
               pageSize: 15,
               showSizeChanger: true,

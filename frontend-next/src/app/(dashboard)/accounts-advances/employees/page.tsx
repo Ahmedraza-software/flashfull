@@ -67,8 +67,8 @@ export default function EmployeeRecordsPage() {
   const [q, setQ] = useState("");
   const [employees, setEmployees] = useState<Employee[]>([]);
 
-  const [month, setMonth] = useState(dayjs().format("YYYY-MM"));
-  const [paidFilter, setPaidFilter] = useState<"all" | "paid" | "unpaid">("all");
+  const [month, setMonth] = useState("2025-12");
+  const [showAdvancesOnly, setShowAdvancesOnly] = useState(true);
 
   const [advancesMonthSummary, setAdvancesMonthSummary] = useState<EmployeeAdvancesMonthSummary | null>(null);
   const [advancesMonthRows, setAdvancesMonthRows] = useState<EmployeeAdvanceMonthRow[]>([]);
@@ -291,34 +291,15 @@ export default function EmployeeRecordsPage() {
   const title = useMemo(() => (
     <Space>
       <TeamOutlined />
-      <span>Accounts</span>
+      <span>Advances - {dayjs(month + "-01").format("MMMM YYYY")}</span>
     </Space>
-  ), []);
+  ), [month]);
 
   const filteredEmployees = useMemo(() => {
-    if (paidFilter === "all") return employees;
-    return employees.filter((e) => {
-      const p = payrollByEmployeeId[e.employee_id];
-      const st = p?.paid_status ?? "unpaid";
-      return st === paidFilter;
-    });
-  }, [employees, paidFilter, payrollByEmployeeId]);
+    return employees;
+  }, [employees]);
 
   const kpis = useMemo(() => {
-    const paidCount = filteredEmployees.filter((e) => (payrollByEmployeeId[e.employee_id]?.paid_status ?? "unpaid") === "paid").length;
-    const totalPaidThisMonth = filteredEmployees.reduce((a, e) => {
-      const p = payrollByEmployeeId[e.employee_id];
-      if (!p || p.paid_status !== "paid") return a;
-      return a + Number(p.net_pay || 0);
-    }, 0);
-    const totalPayrollDueThisMonth = filteredEmployees.reduce((a, e) => {
-      const p = payrollByEmployeeId[e.employee_id];
-      if (!p || p.paid_status !== "unpaid") return a;
-      return a + Number(p.net_pay || 0);
-    }, 0);
-
-    const netSalaryMarkedThisMonth = Number(payrollNetMarkedThisMonth || 0);
-
     const totalAdvancesTaken = filteredEmployees.reduce((a, e) => {
       const s = advanceSummaryByEmployeeDbId[e.id];
       return a + Number(s?.total_advanced ?? 0);
@@ -335,10 +316,6 @@ export default function EmployeeRecordsPage() {
     const pendingClientReceivablesThisMonth = Number(pendingClientReceivablesSummary?.total_pending ?? 0);
 
     return {
-      paidCount,
-      netSalaryMarkedThisMonth,
-      totalPaidThisMonth,
-      totalPayrollDueThisMonth,
       totalAdvancesTaken,
       totalAdvancesTakenThisMonth,
       assignmentCostThisMonth,
@@ -347,7 +324,7 @@ export default function EmployeeRecordsPage() {
       pendingClientReceivablesThisMonth,
       employees: filteredEmployees.length,
     };
-  }, [advanceSummaryByEmployeeDbId, advancesMonthSummary, assignmentsMonthSummary, clearedPaymentsSummary, filteredEmployees, payrollByEmployeeId, payrollNetMarkedThisMonth, pendingClientReceivablesSummary]);
+  }, [advanceSummaryByEmployeeDbId, advancesMonthSummary, assignmentsMonthSummary, clearedPaymentsSummary, filteredEmployees, pendingClientReceivablesSummary]);
 
   const payrollDueRows = useMemo(() => {
     return (payrollRows ?? []).filter((r) => String(r.paid_status || "unpaid").toLowerCase() !== "paid");
@@ -851,15 +828,6 @@ export default function EmployeeRecordsPage() {
             onChange={(d) => setMonth((d ?? dayjs()).format("YYYY-MM"))}
             style={{ width: 220 }}
           />
-          <Segmented
-            value={paidFilter}
-            options={[
-              { label: "All", value: "all" },
-              { label: "Paid", value: "paid" },
-              { label: "Unpaid", value: "unpaid" },
-            ]}
-            onChange={(v) => setPaidFilter(v as "all" | "paid" | "unpaid")}
-          />
         </Space>
 
         <Card size="small" style={{ borderRadius: 12, marginBottom: 12 }}>
@@ -867,8 +835,8 @@ export default function EmployeeRecordsPage() {
             <Col xs={24} sm={12}>
               <Card size="small" style={{ borderRadius: 12, height: 96, background: "#ecfeff", border: "1px solid #a5f3fc" }}>
                 <Statistic
-                  title="Net Salary (Marked)"
-                  value={kpis.netSalaryMarkedThisMonth}
+                  title="Advances Taken (Month)"
+                  value={kpis.totalAdvancesTakenThisMonth}
                   prefix="Rs"
                   precision={2}
                   styles={{ content: { color: "#0e7490" } }}
@@ -877,7 +845,7 @@ export default function EmployeeRecordsPage() {
             </Col>
             <Col xs={24} sm={12}>
               <Card size="small" style={{ borderRadius: 12, height: 96, background: "#fef2f2", border: "1px solid #fecaca" }}>
-                <Statistic title="Payroll Due (Unpaid)" value={kpis.totalPayrollDueThisMonth} prefix="Rs" precision={2} styles={{ content: { color: "#b91c1c" } }} />
+                <Statistic title="Total Advances (Lifetime)" value={kpis.totalAdvancesTaken} prefix="Rs" precision={2} styles={{ content: { color: "#b91c1c" } }} />
               </Card>
             </Col>
           </Row>
@@ -888,10 +856,10 @@ export default function EmployeeRecordsPage() {
         title="Search Employee"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        width={860}
-        destroyOnClose
+        size={860}
+        destroyOnHidden
       >
-        <Space direction="vertical" style={{ width: "100%" }}>
+        <Space orientation="vertical" style={{ width: "100%" }}>
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -905,32 +873,43 @@ export default function EmployeeRecordsPage() {
             Search
           </Button>
 
-          <List
-            bordered
-            loading={loading}
-            dataSource={filteredEmployees}
-            renderItem={(e) => (
-              <List.Item
-                style={{ cursor: "pointer" }}
-                onClick={() => {
-                  setDrawerOpen(false);
-                  router.push(`/accounts-advances/employees/${e.id}`);
-                }}
-              >
-                <List.Item.Meta
-                  title={`${e.employee_id} — ${`${e.first_name || ""} ${e.last_name || ""}`.trim()}`}
-                  description={(() => {
-                    const p = payrollByEmployeeId[e.employee_id];
-                    const st = p?.paid_status ?? "unpaid";
-                    const paidTxt = st === "paid" ? `Paid (${month}): ${money(p?.net_pay ?? 0)}` : `Unpaid (${month})`;
-                    const adv = advanceSummaryByEmployeeDbId[e.id];
-                    const advTxt = `Total Advances: ${money(adv?.total_advanced ?? 0)}`;
-                    return `${e.department || "-"} • ${e.designation || "-"} • ${paidTxt} • ${advTxt}`;
-                  })()}
-                />
-              </List.Item>
+          <div style={{ border: '1px solid #d9d9d9', borderRadius: '6px' }}>
+            {loading ? (
+              <div style={{ padding: '24px', textAlign: 'center' }}>Loading...</div>
+            ) : (
+              filteredEmployees.map((e, index) => (
+                <div
+                  key={e.id}
+                  style={{
+                    cursor: "pointer",
+                    padding: '12px 16px',
+                    borderBottom: index < filteredEmployees.length - 1 ? '1px solid #f0f0f0' : 'none',
+                    transition: 'background-color 0.2s'
+                  }}
+                  onClick={() => {
+                    setDrawerOpen(false);
+                    router.push(`/accounts-advances/employees/${e.id}`);
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f5f5f5' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+                >
+                  <div style={{ fontWeight: 500, marginBottom: '4px' }}>
+                    {`${e.employee_id} — ${`${e.first_name || ""} ${e.last_name || ""}`.trim()}`}
+                  </div>
+                  <div style={{ color: '#8c8c8c', fontSize: '14px' }}>
+                    {(() => {
+                      const p = payrollByEmployeeId[e.employee_id];
+                      const st = p?.paid_status ?? "unpaid";
+                      const paidTxt = st === "paid" ? `Paid (${month}): ${money(p?.net_pay ?? 0)}` : `Unpaid (${month})`;
+                      const adv = advanceSummaryByEmployeeDbId[e.id];
+                      const advTxt = `Total Advances: ${money(adv?.total_advanced ?? 0)}`;
+                      return `${e.department || "-"} • ${e.designation || "-"} • ${paidTxt} • ${advTxt}`;
+                    })()}
+                  </div>
+                </div>
+              ))
             )}
-          />
+          </div>
         </Space>
       </Drawer>
     </>

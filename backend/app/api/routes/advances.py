@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 
 from app.core.database import get_db
-from app.models.employee import Employee
+from app.models.employee2 import Employee2 as Employee
 from app.models.employee_advance import EmployeeAdvance
 from app.models.employee_advance_deduction import EmployeeAdvanceDeduction
 from app.models.payroll_payment_status import PayrollPaymentStatus

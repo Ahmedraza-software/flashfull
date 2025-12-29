@@ -2,6 +2,10 @@ import os
 from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Get the project root directory (erp folder)
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+_DEFAULT_SQLITE_PATH = os.path.join(_PROJECT_ROOT, "flash_erp.db")
+
 
 class Settings(BaseSettings):
     """Application settings."""
@@ -21,8 +25,8 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
     
-    # Database
-    DATABASE_URL: str = ""
+    # Database - Default to SQLite for local development
+    DATABASE_URL: str = f"sqlite:///{_DEFAULT_SQLITE_PATH}"
     
     # Security
     SECRET_KEY: str = "your-super-secret-key-change-this-in-production"
@@ -39,5 +43,5 @@ class Settings(BaseSettings):
     
 settings = Settings()
 
-if not settings.DATABASE_URL:
-    raise RuntimeError("DATABASE_URL is required. Set it in backend/.env or environment variables (e.g. postgresql://user:pass@host:5432/dbname).")
+# Log the database being used
+print(f"[Config] Using database: {settings.DATABASE_URL}")

@@ -751,7 +751,7 @@ async def export_employee_pdf(
                         pdf.ln(2)
     
     # Generate base PDF
-    base_pdf_bytes = pdf.output(dest="S").encode("latin-1")
+    base_pdf_bytes = pdf.output(dest="S")
 
     # Merge in any PDF attachments (so they are embedded, not just referenced by name)
     writer = PdfWriter()

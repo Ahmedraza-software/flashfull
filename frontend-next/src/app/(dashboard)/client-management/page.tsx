@@ -713,7 +713,7 @@ export default function ClientManagementPage() {
               title="Total Clients"
               value={statistics?.total_clients || 0}
               prefix={<TeamOutlined />}
-              valueStyle={{ color: '#1890ff' }}
+              styles={{ content: { color: '#1890ff' } }}
             />
           </Card>
         </Col>
@@ -723,7 +723,7 @@ export default function ClientManagementPage() {
               title="Active Clients"
               value={statistics?.by_status?.active || 0}
               prefix={<UserOutlined />}
-              valueStyle={{ color: '#52c41a' }}
+              styles={{ content: { color: '#52c41a' } }}
             />
           </Card>
         </Col>
@@ -733,7 +733,7 @@ export default function ClientManagementPage() {
               title="Corporate Clients"
               value={statistics?.by_type?.corporate || 0}
               prefix={<FileTextOutlined />}
-              valueStyle={{ color: '#722ed1' }}
+              styles={{ content: { color: '#722ed1' } }}
             />
           </Card>
         </Col>
@@ -743,7 +743,7 @@ export default function ClientManagementPage() {
               title="Islamabad Clients"
               value={statistics?.by_location?.islamabad || 0}
               prefix={<EnvironmentOutlined />}
-              valueStyle={{ color: '#fa8c16' }}
+              styles={{ content: { color: '#fa8c16' } }}
             />
           </Card>
         </Col>
@@ -863,7 +863,7 @@ export default function ClientManagementPage() {
         title={clientDrawerMode === "create" ? "New Client" : "Edit Client"}
         open={clientDrawerOpen}
         onClose={() => setClientDrawerOpen(false)}
-        width={600}
+        size={600}
         extra={
           <Space>
             <Button onClick={() => setClientDrawerOpen(false)}>Cancel</Button>
@@ -1065,7 +1065,7 @@ export default function ClientManagementPage() {
         title={focalDrawerMode === "create" ? "Add Focal Person" : "Edit Focal Person"}
         open={focalDrawerOpen}
         onClose={() => setFocalDrawerOpen(false)}
-        width={450}
+        size={450}
         extra={
           <Space>
             <Button onClick={() => setFocalDrawerOpen(false)}>Cancel</Button>

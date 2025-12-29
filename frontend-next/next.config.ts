@@ -2,21 +2,13 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  output: 'standalone',
+  output: 'export',
   reactCompiler: true,
-  async rewrites() {
-    const backend = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${backend}/api/:path*`,
-      },
-      {
-        source: "/uploads/:path*",
-        destination: `${backend}/uploads/:path*`,
-      },
-    ];
+  images: {
+    unoptimized: true,
   },
+  // API rewrites are not supported in export mode. 
+  // When served by the backend, requests to /api will naturally go to the backend.
 };
 
 export default nextConfig;

@@ -152,14 +152,6 @@ export default function DashboardShell({
       });
     }
 
-    if (has("performance:view")) {
-      hrmChildren.push({
-        key: "performance",
-        icon: <BarChartOutlined />,
-        label: <Link href="/performance">Performance</Link>,
-      });
-    }
-
     if (hrmChildren.length > 0) {
       items.push({
         key: "hrm",

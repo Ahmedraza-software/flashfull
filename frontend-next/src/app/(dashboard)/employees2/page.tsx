@@ -114,7 +114,6 @@ export default function Employees2Page() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee2 | null>(null);
   const [form] = Form.useForm();
-  const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
 
@@ -175,7 +174,6 @@ export default function Employees2Page() {
   }, [fetchFilters]);
 
   const handleImportJson = async (file: File) => {
-    setImporting(true);
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -197,21 +195,9 @@ export default function Employees2Page() {
       fetchFilters();
     } catch (err: unknown) {
       message.error(err instanceof Error ? err.message : "Import failed");
-    } finally {
-      setImporting(false);
     }
   };
 
-  const handleDeleteAll = async () => {
-    try {
-      await api.del("/api/employees2/");
-      message.success("All employees deleted");
-      fetchEmployees();
-      fetchFilters();
-    } catch {
-      message.error("Failed to delete");
-    }
-  };
 
   const handleDelete = async (id: number) => {
     try {
@@ -497,18 +483,6 @@ export default function Employees2Page() {
                     e.target.value = "";
                   }}
                 />
-                <Button
-                  icon={<UploadOutlined />}
-                  onClick={() => fileInputRef.current?.click()}
-                  loading={importing}
-                >
-                  Import JSON
-                </Button>
-                <Popconfirm title="Delete ALL employees?" onConfirm={handleDeleteAll}>
-                  <Button danger icon={<DeleteOutlined />}>
-                    Delete All
-                  </Button>
-                </Popconfirm>
                 <Button icon={<ReloadOutlined />} onClick={fetchEmployees}>
                   Refresh
                 </Button>
@@ -590,7 +564,9 @@ export default function Employees2Page() {
         onOk={handleSave}
         width={900}
         mask={false}
-        bodyStyle={{ backgroundColor: "transparent" }}
+        styles={{
+          body: { backgroundColor: "transparent" }
+        }}
       >
         <Form form={form} layout="vertical">
           <Tabs

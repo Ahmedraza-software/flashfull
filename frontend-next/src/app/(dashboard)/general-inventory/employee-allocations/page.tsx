@@ -62,7 +62,7 @@ export default function GeneralInventoryEmployeeAllocationsPage() {
     setLoading(true);
     try {
       const [employeesRes, itemsRes, txRes] = await Promise.all([
-        api.get<{ employees: Employee[] }>("/api/employees/", { query: { limit: 500 } }),
+        api.get<{ employees: Employee[] }>("/api/employees/", { query: { limit: 1000 } }),
         api.get<GeneralItem[]>("/api/general-inventory/items"),
         api.get<GeneralTxRow[]>("/api/general-inventory/transactions", { query: { limit: 5000 } }),
       ]);
@@ -209,6 +209,28 @@ export default function GeneralInventoryEmployeeAllocationsPage() {
         msg.error(errorMessage(e, "Failed to return"));
       } finally {
         setActionLoading((p) => ({ ...p, [r.id]: false }));
+      }
+    },
+    [load, msg]
+  );
+
+  const doReturnAllForEmployee = useCallback(
+    async (g: { employee_id: string; items: AllocationRow[] }) => {
+      setLoading(true);
+      try {
+        for (const r of g.items) {
+          await api.post(`/api/general-inventory/items/${encodeURIComponent(r.item_code)}/return`, {
+            employee_id: r.employee_id,
+            quantity: Number(r.quantity ?? 0),
+            notes: "Batch Return from Employee Allocations",
+          });
+        }
+        msg.success(`Successfully returned all items for ${g.employee_id}`);
+        await load();
+      } catch (e: unknown) {
+        msg.error(errorMessage(e, "Failed to return all items"));
+      } finally {
+        setLoading(false);
       }
     },
     [load, msg]
@@ -503,15 +525,27 @@ export default function GeneralInventoryEmployeeAllocationsPage() {
                 </Space>
               ),
               extra: (
-                <Button
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    router.push(`/general-inventory/employee-allocations/${encodeURIComponent(g.employee_id)}`);
-                  }}
-                >
-                  Open
-                </Button>
+                <Space onClick={(e) => e.stopPropagation()}>
+                  <Popconfirm
+                    title={`Return ALL ${g.items.length} items for this employee to stock?`}
+                    okText="Yes"
+                    cancelText="No"
+                    onConfirm={() => void doReturnAllForEmployee(g)}
+                  >
+                    <Button size="small" danger icon={<DeleteOutlined />}>
+                      Delete All
+                    </Button>
+                  </Popconfirm>
+                  <Button
+                    size="small"
+                    icon={<EyeOutlined />}
+                    onClick={() => {
+                      router.push(`/general-inventory/employee-allocations/${encodeURIComponent(g.employee_id)}`);
+                    }}
+                  >
+                    Open
+                  </Button>
+                </Space>
               ),
               children: (
                 <Table<AllocationRow>

@@ -89,7 +89,9 @@ export default function NotificationDropdown({ alerts, onClear }: NotificationDr
       open={open}
       onOpenChange={handleVisibleChange}
       placement="bottomRight"
-      overlayStyle={{ maxHeight: 400, overflowY: 'auto' }}
+      styles={{
+        root: { maxHeight: 400, overflowY: 'auto' }
+      }}
     >
       <Button 
         type="text" 

@@ -1,24 +1,67 @@
+# Python cache
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
 venv/
-.venv/
-.env
-.env.*
-.git
-.gitignore
-README.md
-Dockerfile
-.dockerignore
-migrate_to_neon.py
-clear_neon_tables.py
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
 *.db
 *.sqlite
-*.csv
-*.txt
-*.pdf
-*.png
-*.jpg
-*.jpeg
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Environment files (will be mounted separately)
+.env
+# *.env  <-- Commented out to allow backend.env
+!backend.env
+
+# Uploads (will be mounted as volume)
 uploads/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# Test files
+test_*.py
+*_test.py
+tests/
+.pytest_cache/
+
+# Development scripts
+debug_*.py
+check_*.py
+inspect_*.py
+create_*.py
+import_*.py
+
+# SQL exports
+*.sql
+
+# Temporary files
+tmp_*
+*.tmp

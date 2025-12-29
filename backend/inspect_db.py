@@ -1,39 +1,18 @@
-import os
 import sqlite3
+import os
 
+db_path = r"C:/Users/ahmed/Desktop/newfolder/erp/flash_erp.db"
 
-def inspect_db(db_path: str) -> None:
-    print(f"--- {db_path}")
-    con = sqlite3.connect(db_path)
-    cur = con.cursor()
-
-    cur.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
-    )
-    tables = [r[0] for r in cur.fetchall()]
-    print(f"tables: {len(tables)}")
-
-    for t in tables[:50]:
-        try:
-            cur.execute(f"SELECT COUNT(1) FROM {t}")
-            c = cur.fetchone()[0]
-        except Exception as e:
-            c = f"ERR {e}"
-        print(f"{t}: {c}")
-
-    if len(tables) > 50:
-        print("...")
-
-    con.close()
-
-
-def main() -> None:
-    base = os.path.dirname(os.path.abspath(__file__))
-    for name in ["flash_erp.db", "app.db", "erp.db"]:
-        p = os.path.join(base, name)
-        if os.path.exists(p):
-            inspect_db(p)
-
-
-if __name__ == "__main__":
-    main()
+if not os.path.exists(db_path):
+    print(f"Error: Database not found at {db_path}")
+else:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    print("--- Searching for SEC-0001 in employees2 serial_no or fss_no ---")
+    rows = cursor.execute("SELECT id, serial_no, fss_no, name FROM employees2 WHERE serial_no LIKE '%SEC%' OR fss_no LIKE '%SEC%'").fetchall()
+    for row in rows:
+        print(dict(row))
+        
+    conn.close()

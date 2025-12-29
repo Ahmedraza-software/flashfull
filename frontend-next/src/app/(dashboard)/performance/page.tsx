@@ -103,7 +103,7 @@ export default function PerformancePage() {
     <>
       {msgCtx}
       <div style={{ padding: 16, background: "#f5f5f5", minHeight: "100vh" }}>
-        <Space direction="vertical" size={16} style={{ width: "100%" }}>
+        <Space orientation="vertical" size={16} style={{ width: "100%" }}>
           {/* Header */}
           <Card styles={{ body: { padding: "16px 20px" } }}>
             <Row justify="space-between" align="middle">
@@ -212,7 +212,7 @@ export default function PerformancePage() {
                         title="Net Payable" 
                         value={data?.payroll.total_net ?? 0} 
                         prefix="Rs" 
-                        valueStyle={{ color: "#52c41a", fontSize: 20 }}
+                        styles={{ content: { color: "#52c41a", fontSize: 20 } }}
                       />
                     </Col>
                     <Col xs={12} md={6}>
@@ -220,7 +220,7 @@ export default function PerformancePage() {
                         title="Total Salary" 
                         value={data?.payroll.total_salary ?? 0} 
                         prefix="Rs"
-                        valueStyle={{ fontSize: 20 }}
+                        styles={{ content: { fontSize: 20 } }}
                       />
                     </Col>
                     <Col xs={12} md={6}>
@@ -228,7 +228,7 @@ export default function PerformancePage() {
                         title="Deductions" 
                         value={data?.payroll.total_deductions ?? 0} 
                         prefix="Rs"
-                        valueStyle={{ color: "#ff4d4f", fontSize: 20 }}
+                        styles={{ content: { color: "#ff4d4f", fontSize: 20 } }}
                       />
                     </Col>
                     <Col xs={12} md={6}>
@@ -236,7 +236,7 @@ export default function PerformancePage() {
                         title="Avg Salary" 
                         value={data?.payroll.avg_salary ?? 0} 
                         prefix="Rs"
-                        valueStyle={{ fontSize: 20 }}
+                        styles={{ content: { fontSize: 20 } }}
                       />
                     </Col>
                   </Row>

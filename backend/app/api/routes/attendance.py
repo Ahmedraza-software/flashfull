@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.api.dependencies import require_permission
 from app.models.attendance import AttendanceRecord
 from app.models.employee import Employee
+from app.models.employee2 import Employee2
 from app.schemas.attendance import AttendanceBulkUpsert, AttendanceList
 
 from fpdf import FPDF
@@ -18,6 +19,27 @@ from datetime import date as dt_date
 
 
 router = APIRouter(dependencies=[Depends(require_permission("attendance:manage"))])
+
+
+def _normalize_status_and_leave_type(status: str | None, leave_type: str | None) -> tuple[str, str | None]:
+    st = (status or "").strip().lower()
+    lt = (leave_type or "").strip().lower() or None
+
+    if st in ("", "-", "unmarked"):
+        return "unmarked", None
+
+    if st.startswith("leave"):
+        if lt is None:
+            if "unpaid" in st:
+                lt = "unpaid"
+            elif "paid" in st:
+                lt = "paid"
+        return "leave", lt
+
+    if st in ("present", "late", "absent"):
+        return st, None
+
+    return st, lt
 
 
 @router.get("/employee/{employee_id}")
@@ -208,10 +230,21 @@ async def export_employee_attendance_pdf(
     if from_date > to_date:
         raise HTTPException(status_code=400, detail="from_date must be <= to_date")
 
-    emp = db.query(Employee).filter(Employee.employee_id == employee_id).first()
+    # Try modern Employee2 first
+    emp2 = db.query(Employee2).filter(
+        (Employee2.fss_no == employee_id) | 
+        (Employee2.serial_no == employee_id) | 
+        (Employee2.id == (int(employee_id) if employee_id.isdigit() else -1))
+    ).first()
+
     emp_name = ""
-    if emp is not None:
-        emp_name = " ".join([p for p in [getattr(emp, "first_name", ""), getattr(emp, "last_name", "")] if p]).strip()
+    if emp2:
+        emp_name = emp2.name
+    else:
+        # Fallback to legacy Employee
+        emp = db.query(Employee).filter(Employee.employee_id == employee_id).first()
+        if emp:
+            emp_name = " ".join([p for p in [getattr(emp, "first_name", ""), getattr(emp, "last_name", "")] if p]).strip()
 
     records = (
         db.query(AttendanceRecord)
@@ -626,7 +659,7 @@ async def bulk_upsert_attendance(
             .first()
         )
 
-        status = (rec.status or "").strip().lower()
+        status, leave_type = _normalize_status_and_leave_type(rec.status, rec.leave_type)
 
         # Treat 'unmarked' as clearing the record.
         if status == "unmarked":
@@ -645,7 +678,7 @@ async def bulk_upsert_attendance(
                     overtime_rate=rec.overtime_rate,
                     late_minutes=rec.late_minutes,
                     late_deduction=rec.late_deduction,
-                    leave_type=rec.leave_type,
+                    leave_type=leave_type,
                     fine_amount=rec.fine_amount,
                 )
             )
@@ -656,7 +689,7 @@ async def bulk_upsert_attendance(
             existing.overtime_rate = rec.overtime_rate
             existing.late_minutes = rec.late_minutes
             existing.late_deduction = rec.late_deduction
-            existing.leave_type = rec.leave_type
+            existing.leave_type = leave_type
             existing.fine_amount = rec.fine_amount
 
     db.commit()

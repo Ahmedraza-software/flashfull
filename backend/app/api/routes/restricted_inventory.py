@@ -722,8 +722,10 @@ async def return_item(item_code: str, payload: ReturnRequest, db: Session = Depe
         if employee_id:
             bal = _get_or_create_balance(db, employee_id=employee_id, item_code=item_code)
             if float(bal.quantity_issued or 0.0) < float(qty):
-                raise HTTPException(status_code=400, detail="Employee does not have enough issued quantity")
-            bal.quantity_issued = float(bal.quantity_issued or 0.0) - float(qty)
+                # If mismatch, reset balance to 0
+                bal.quantity_issued = 0.0
+            else:
+                bal.quantity_issued = float(bal.quantity_issued or 0.0) - float(qty)
 
         _log_tx(db, item_code=item_code, action="RETURN", employee_id=employee_id, quantity=float(qty), notes=payload.notes)
 

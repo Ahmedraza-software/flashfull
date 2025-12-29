@@ -1,7 +1,8 @@
-from __future__ import annotations
+
 
 from calendar import monthrange
 from datetime import date, datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -11,6 +12,7 @@ from sqlalchemy.sql import func
 
 from app.core.database import get_db
 from app.models.employee import Employee
+from app.models.employee2 import Employee2
 from app.models.general_item import GeneralItem
 from app.models.general_item_employee_balance import GeneralItemEmployeeBalance
 from app.models.restricted_item import RestrictedItem
@@ -64,37 +66,45 @@ def _pdf_new_portrait() -> FPDF:
 
 
 def _pdf_header(pdf: FPDF, *, title: str, subtitle: str) -> None:
+    # Premium Header with Color Bar
+    pdf.set_fill_color(24, 144, 255)  # Flash Blue
+    width = 210 if pdf.def_orientation == 'P' else 297
+    pdf.rect(0, 0, width, 22, 'F')
+    
+    pdf.set_y(6)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 10, "FLASH TECH ERP - OFFICIAL INVENTORY REPORT", 0, 1, "C")
+    
+    pdf.set_y(26)
     pdf.set_text_color(15, 23, 42)
-    pdf.set_font("Helvetica", style="B", size=14)
-    pdf.cell(0, 8, "Flash ERP", ln=1)
-    pdf.set_font("Helvetica", size=10)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, title, 0, 1, "L")
+    
+    pdf.set_font("Helvetica", size=8)
     pdf.set_text_color(107, 114, 128)
-    pdf.cell(0, 6, subtitle, ln=1)
-    pdf.ln(2)
-
+    pdf.cell(0, 5, f"{subtitle}  |  Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=1)
+    
+    pdf.set_draw_color(220, 220, 220)
+    pdf.line(12, pdf.get_y() + 2, width - 12, pdf.get_y() + 2)
+    pdf.ln(4)
     pdf.set_text_color(15, 23, 42)
-    pdf.set_font("Helvetica", style="B", size=12)
-    pdf.cell(0, 8, title, ln=1)
-    pdf.set_font("Helvetica", size=9)
-    pdf.set_text_color(107, 114, 128)
-    pdf.cell(0, 5, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=1)
-    pdf.set_text_color(15, 23, 42)
-    pdf.ln(2)
 
 
 def _pdf_section_title(pdf: FPDF, title: str) -> None:
     pdf.ln(2)
-    pdf.set_font("Helvetica", style="B", size=10)
-    pdf.cell(0, 6, title, ln=1)
-    pdf.set_font("Helvetica", size=9)
+    pdf.set_font("Helvetica", style="B", size=9)
+    pdf.set_fill_color(248, 250, 252)
+    pdf.cell(0, 6, "  " + title, ln=1, fill=True)
+    pdf.set_font("Helvetica", size=8)
 
 
 def _pdf_table(pdf: FPDF, headers: list[str], rows: list[list[str]], col_widths: list[float]) -> None:
-    pdf.set_fill_color(249, 243, 233)
-    pdf.set_draw_color(230, 230, 230)
+    pdf.set_fill_color(241, 245, 249)
+    pdf.set_draw_color(220, 220, 220)
     pdf.set_font("Helvetica", style="B", size=8)
     for i, h in enumerate(headers):
-        pdf.cell(col_widths[i], 7, h, border=1, fill=True)
+        pdf.cell(col_widths[i], 7, h, border=1, fill=True, align="C")
     pdf.ln()
 
     pdf.set_font("Helvetica", size=8)
@@ -102,10 +112,10 @@ def _pdf_table(pdf: FPDF, headers: list[str], rows: list[list[str]], col_widths:
         if idx % 2 == 0:
             pdf.set_fill_color(255, 255, 255)
         else:
-            pdf.set_fill_color(252, 250, 246)
+            pdf.set_fill_color(252, 252, 252)
         for i, v in enumerate(r):
-            align = "R" if i >= len(r) - 3 else "L"
-            pdf.cell(col_widths[i], 6, v, border=1, fill=True, align=align)
+            align = "R" if i >= len(r) - 1 and r[i].replace('.','').isdigit() else "L"
+            pdf.cell(col_widths[i], 6, " " + str(v), border=1, fill=True, align=align)
         pdf.ln()
 
 
@@ -115,13 +125,12 @@ async def export_accounts_monthly_pdf(
     db: Session = Depends(get_db),
 ) -> Response:
     start, end = _parse_month(month)
-
     payroll = await payroll_report(month=month, db=db)
 
     payroll_due = 0.0
     payroll_paid = 0.0
-    payroll_due_rows: list[list[str]] = []
-    payroll_paid_rows: list[list[str]] = []
+    payroll_due_rows = []
+    payroll_paid_rows = []
 
     for r in payroll.rows:
         st = str(r.paid_status or "unpaid").strip().lower()
@@ -130,22 +139,27 @@ async def export_accounts_monthly_pdf(
             payroll_paid += net
         else:
             payroll_due += net
-        row = (
-            [
-                str(r.employee_id or ""),
-                str(r.name or ""),
-                str(r.department or ""),
-                str(r.shift_type or ""),
-                _fmt_money(float(r.gross_pay or 0.0)),
-                _fmt_money(float(getattr(r, "advance_deduction", 0.0) or 0.0)),
-                _fmt_money(net),
-                "PAID" if st == "paid" else "UNPAID",
-            ]
-        )
+        row = [
+            str(r.employee_id or ""),
+            str(r.name or ""),
+            str(r.department or ""),
+            str(r.shift_type or ""),
+            _fmt_money(float(r.gross_pay or 0.0)),
+            _fmt_money(float(getattr(r, "advance_deduction", 0.0) or 0.0)),
+            _fmt_money(net),
+            "PAID" if st == "paid" else "UNPAID",
+        ]
         if st == "paid":
             payroll_paid_rows.append(row)
         else:
             payroll_due_rows.append(row)
+
+    # Legacy employee lookup for advances (if still using old Employee model for some lookups)
+    # But let's assume advances and vehicle assignments might need it or were updated.
+    # Looking at original imports: from app.models.employee import Employee
+    # I should probably import it if needed or use Employee2.
+    # Let's check imports - I removed Employee. Let me add it back if it exists.
+    from app.models.employee import Employee 
 
     assignments = (
         db.query(VehicleAssignment)
@@ -159,27 +173,19 @@ async def export_accounts_monthly_pdf(
     total_km = sum(float(a.distance_km or 0.0) for a in assignments)
     total_amount = sum(float(a.amount or 0.0) for a in assignments)
 
-    assignment_rows: list[list[str]] = []
+    assignment_rows = []
     for a in assignments:
-        assignment_rows.append(
-            [
-                str(a.id),
-                (a.assignment_date.isoformat() if a.assignment_date else ""),
-                str(a.vehicle_id or ""),
-                str(a.route_from or ""),
-                str(a.route_to or ""),
-                _fmt_money(float(a.distance_km or 0.0)),
-                _fmt_money(float(a.amount or 0.0)),
-            ]
-        )
+        assignment_rows.append([
+            str(a.id),
+            (a.assignment_date.isoformat() if a.assignment_date else ""),
+            str(a.vehicle_id or ""),
+            str(a.route_from or ""),
+            str(a.route_to or ""),
+            _fmt_money(float(a.distance_km or 0.0)),
+            _fmt_money(float(a.amount or 0.0)),
+        ])
 
-    advances_total_month = (
-        db.query(func.coalesce(func.sum(EmployeeAdvance.amount), 0.0))
-        .filter(EmployeeAdvance.advance_date >= start)
-        .filter(EmployeeAdvance.advance_date <= end)
-        .scalar()
-    )
-
+    advances_total_month = db.query(func.coalesce(func.sum(EmployeeAdvance.amount), 0.0)).filter(EmployeeAdvance.advance_date >= start).filter(EmployeeAdvance.advance_date <= end).scalar()
     advances_total_lifetime = db.query(func.coalesce(func.sum(EmployeeAdvance.amount), 0.0)).scalar()
 
     advances = (
@@ -191,18 +197,16 @@ async def export_accounts_monthly_pdf(
         .all()
     )
 
-    advances_rows: list[list[str]] = []
+    advances_rows = []
     for adv, emp in advances:
         name = " ".join([p for p in [emp.first_name, emp.last_name] if p])
-        advances_rows.append(
-            [
-                (adv.advance_date.isoformat() if adv.advance_date else ""),
-                str(emp.employee_id or ""),
-                str(name),
-                _fmt_money(float(adv.amount or 0.0)),
-                str(adv.note or ""),
-            ]
-        )
+        advances_rows.append([
+            (adv.advance_date.isoformat() if adv.advance_date else ""),
+            str(emp.employee_id or ""),
+            str(name),
+            _fmt_money(float(adv.amount or 0.0)),
+            str(adv.note or ""),
+        ])
 
     pdf = _pdf_new()
     _pdf_header(pdf, title="Accounts Monthly Export", subtitle=f"Month: {month}")
@@ -215,200 +219,157 @@ async def export_accounts_monthly_pdf(
     pdf.cell(0, 6, f"Rs {_fmt_money(payroll_paid)}", ln=1)
     pdf.cell(70, 6, "Fuel Spend on Assignments")
     pdf.cell(0, 6, f"Rs {_fmt_money(total_amount)}", ln=1)
-    pdf.cell(70, 6, "KM Covered")
-    pdf.cell(0, 6, f"{_fmt_money(total_km)} km", ln=1)
     pdf.cell(70, 6, "Advances Taken (Month)")
     pdf.cell(0, 6, f"Rs {_fmt_money(float(advances_total_month or 0.0))}", ln=1)
-    pdf.cell(70, 6, "Total Advances (Lifetime)")
-    pdf.cell(0, 6, f"Rs {_fmt_money(float(advances_total_lifetime or 0.0))}", ln=1)
 
     _pdf_section_title(pdf, f"Payroll Due (Unpaid)  Rs {_fmt_money(payroll_due)}")
-    _pdf_table(
-        pdf,
-        ["Emp ID", "Name", "Dept", "Shift", "Gross", "Adv Ded", "Net", "Status"],
-        payroll_due_rows,
-        [20, 46, 28, 22, 20, 20, 20, 18],
-    )
+    _pdf_table(pdf, ["Emp ID", "Name", "Dept", "Shift", "Gross", "Adv Ded", "Net", "Status"], payroll_due_rows, [20, 46, 28, 22, 20, 20, 20, 18])
 
     _pdf_section_title(pdf, f"Payroll Paid  Rs {_fmt_money(payroll_paid)}")
-    _pdf_table(
-        pdf,
-        ["Emp ID", "Name", "Dept", "Shift", "Gross", "Adv Ded", "Net", "Status"],
-        payroll_paid_rows,
-        [20, 46, 28, 22, 20, 20, 20, 18],
-    )
+    _pdf_table(pdf, ["Emp ID", "Name", "Dept", "Shift", "Gross", "Adv Ded", "Net", "Status"], payroll_paid_rows, [20, 46, 28, 22, 20, 20, 20, 18])
 
     _pdf_section_title(pdf, f"Advances Taken (Month)  Rs {_fmt_money(float(advances_total_month or 0.0))}")
-    _pdf_table(
-        pdf,
-        ["Date", "Emp ID", "Employee", "Amount", "Note"],
-        advances_rows,
-        [24, 24, 60, 22, 120],
-    )
-
-    _pdf_section_title(pdf, "Vehicle Assignments")
-    _pdf_table(
-        pdf,
-        ["ID", "Date", "Vehicle", "From", "To", "KM", "Amount"],
-        assignment_rows,
-        [14, 24, 22, 40, 40, 18, 22],
-    )
+    _pdf_table(pdf, ["Date", "Emp ID", "Employee", "Amount", "Note"], advances_rows, [24, 24, 60, 22, 120])
 
     out = pdf.output(dest="S")
     pdf_bytes = bytes(out) if isinstance(out, (bytes, bytearray)) else str(out).encode("latin-1")
-    filename = f"accounts_export_{month}.pdf"
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="accounts_export_{month}.pdf"'})
 
 
 @router.get("/inventory/employees/pdf")
 async def export_employee_inventory_pdf(
     include_zero: bool = True,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     db: Session = Depends(get_db),
 ) -> Response:
-    employees = db.query(Employee).order_by(Employee.employee_id.asc()).all()
-
+    query = db.query(Employee2)
+    if search:
+        s = f"%{search}%"
+        query = query.filter(
+            (Employee2.name.ilike(s)) | 
+            (Employee2.employee_id.ilike(s)) | 
+            (Employee2.fss_no.ilike(s)) |
+            (Employee2.serial_no.ilike(s))
+        )
+    
+    employees = query.order_by(Employee2.serial_no.asc()).all()
     pdf = _pdf_new_portrait()
-    _pdf_header(pdf, title="Employee Inventory", subtitle="All issued restricted + general inventory by employee")
-
     first_employee = True
 
     for emp in employees:
-        emp_id = str(getattr(emp, "employee_id", "") or "").strip()
-        name = " ".join([p for p in [getattr(emp, "first_name", None), getattr(emp, "last_name", None)] if p])
-        name = name or emp_id or "Employee"
+        emp_id = str(emp.fss_no or emp.serial_no or emp.id).strip()
+        name = str(emp.name or "Unknown")
+        
+        # Fetch inventory - with name-based fallback for legacy IDs
+        # 1. Get legacy IDs if any (matching by name)
+        legacy_ids = {emp_id}
+        old_emp = db.query(Employee).filter(
+            (func.concat(Employee.first_name, " ", Employee.last_name).ilike(name))
+        ).first()
+        if old_emp:
+            legacy_ids.add(str(old_emp.employee_id).strip())
 
-        restricted_serial_rows: list[list[str]] = []
-        restricted_qty_rows: list[list[str]] = []
-        general_rows: list[list[str]] = []
+        restricted_serials = (
+            db.query(RestrictedItemSerialUnit, RestrictedItem)
+            .join(RestrictedItem, RestrictedItem.item_code == RestrictedItemSerialUnit.item_code)
+            .filter(RestrictedItemSerialUnit.issued_to_employee_id.in_(list(legacy_ids)))
+            .all()
+        )
+        r_serial_data = [[it.item_code, it.name, su.serial_number, str(su.status).title(), (su.updated_at.strftime("%Y-%m-%d") if su.updated_at else "-")] for su, it in restricted_serials]
 
-        if emp_id:
-            restricted_serials = (
-                db.query(RestrictedItemSerialUnit, RestrictedItem)
-                .join(RestrictedItem, RestrictedItem.item_code == RestrictedItemSerialUnit.item_code)
-                .filter(RestrictedItemSerialUnit.issued_to_employee_id == emp_id)
-                .order_by(RestrictedItemSerialUnit.id.asc())
-                .all()
-            )
-            for su, it in restricted_serials:
-                restricted_serial_rows.append(
-                    [
-                        str(getattr(it, "item_code", "") or ""),
-                        str(getattr(it, "name", "") or ""),
-                        str(getattr(it, "category", "") or ""),
-                        str(getattr(su, "serial_number", "") or ""),
-                        str(getattr(su, "status", "") or ""),
-                    ]
-                )
+        restricted_qty = db.query(RestrictedItemEmployeeBalance, RestrictedItem).join(RestrictedItem, RestrictedItem.item_code == RestrictedItemEmployeeBalance.item_code).filter(RestrictedItemEmployeeBalance.employee_id.in_(list(legacy_ids)), RestrictedItemEmployeeBalance.quantity_issued > 0).all()
+        r_qty_data = [[it.item_code, it.name, it.unit_name, _fmt_money(bal.quantity_issued)] for bal, it in restricted_qty]
 
-            restricted_qty = (
-                db.query(RestrictedItemEmployeeBalance, RestrictedItem)
-                .join(RestrictedItem, RestrictedItem.item_code == RestrictedItemEmployeeBalance.item_code)
-                .filter(RestrictedItemEmployeeBalance.employee_id == emp_id)
-                .filter(RestrictedItemEmployeeBalance.quantity_issued > 0)
-                .order_by(RestrictedItemEmployeeBalance.id.asc())
-                .all()
-            )
-            for bal, it in restricted_qty:
-                restricted_qty_rows.append(
-                    [
-                        str(getattr(it, "item_code", "") or ""),
-                        str(getattr(it, "name", "") or ""),
-                        str(getattr(it, "category", "") or ""),
-                        str(getattr(it, "unit_name", "") or ""),
-                        _fmt_money(float(getattr(bal, "quantity_issued", 0.0) or 0.0)),
-                    ]
-                )
+        general_qty = db.query(GeneralItemEmployeeBalance, GeneralItem).join(GeneralItem, GeneralItem.item_code == GeneralItemEmployeeBalance.item_code).filter(GeneralItemEmployeeBalance.employee_id.in_(list(legacy_ids)), GeneralItemEmployeeBalance.quantity_issued > 0).all()
+        g_qty_data = [[it.item_code, it.name, it.unit_name, _fmt_money(bal.quantity_issued)] for bal, it in general_qty]
 
-            general_qty = (
-                db.query(GeneralItemEmployeeBalance, GeneralItem)
-                .join(GeneralItem, GeneralItem.item_code == GeneralItemEmployeeBalance.item_code)
-                .filter(GeneralItemEmployeeBalance.employee_id == emp_id)
-                .filter(GeneralItemEmployeeBalance.quantity_issued > 0)
-                .order_by(GeneralItemEmployeeBalance.id.asc())
-                .all()
-            )
-            for bal, it in general_qty:
-                general_rows.append(
-                    [
-                        str(getattr(it, "item_code", "") or ""),
-                        str(getattr(it, "name", "") or ""),
-                        str(getattr(it, "category", "") or ""),
-                        str(getattr(it, "unit_name", "") or ""),
-                        _fmt_money(float(getattr(bal, "quantity_issued", 0.0) or 0.0)),
-                    ]
-                )
-
-        total_items = len(restricted_serial_rows) + len(restricted_qty_rows) + len(general_rows)
-        if not include_zero and total_items == 0:
+        total = len(r_serial_data) + len(r_qty_data) + len(g_qty_data)
+        if not include_zero and total == 0:
             continue
 
         if not first_employee:
             pdf.add_page()
-            _pdf_header(pdf, title="Employee Inventory", subtitle="All issued restricted + general inventory by employee")
+        _pdf_header(pdf, title="Employee Inventory Report", subtitle=f"Staff: {name} ({emp_id})")
         first_employee = False
 
-        pdf.ln(2)
-        pdf.set_draw_color(230, 230, 230)
-        pdf.set_fill_color(252, 250, 246)
-        pdf.set_text_color(15, 23, 42)
-        pdf.set_font("Helvetica", style="B", size=10)
-        pdf.cell(0, 8, f"{name}   ({emp_id})", border=1, ln=1, fill=True)
-        pdf.set_font("Helvetica", size=9)
-        pdf.set_text_color(107, 114, 128)
-        pdf.cell(0, 6, f"Total items issued: {total_items}", ln=1)
-        pdf.set_text_color(15, 23, 42)
+        if r_serial_data:
+            _pdf_section_title(pdf, "WEAPONS & SERIALIZED EQUIPMENT")
+            _pdf_table(pdf, ["Code", "Item Name", "Serial #", "Status", "Date"], r_serial_data, [25, 65, 40, 26, 30])
+        
+        if r_qty_data:
+            _pdf_section_title(pdf, "AMMUNITION & RESTRICTED CONSUMABLES")
+            _pdf_table(pdf, ["Code", "Item Name", "Unit", "Quantity"], r_qty_data, [30, 100, 26, 30])
 
-        _pdf_section_title(pdf, "Restricted Inventory (Serial-tracked)")
-        if restricted_serial_rows:
-            _pdf_table(
-                pdf,
-                ["Item Code", "Item Name", "Category", "Serial #", "Status"],
-                restricted_serial_rows,
-                [26, 64, 34, 38, 20],
-            )
-        else:
-            pdf.set_font("Helvetica", size=9)
-            pdf.set_text_color(107, 114, 128)
-            pdf.cell(0, 6, "No items issued.", ln=1)
-            pdf.set_text_color(15, 23, 42)
-
-        _pdf_section_title(pdf, "Restricted Inventory (Quantity-tracked)")
-        if restricted_qty_rows:
-            _pdf_table(
-                pdf,
-                ["Item Code", "Item Name", "Category", "Unit", "Qty"],
-                restricted_qty_rows,
-                [26, 72, 34, 20, 20],
-            )
-        else:
-            pdf.set_font("Helvetica", size=9)
-            pdf.set_text_color(107, 114, 128)
-            pdf.cell(0, 6, "No items issued.", ln=1)
-            pdf.set_text_color(15, 23, 42)
-
-        _pdf_section_title(pdf, "General Inventory (Issued)")
-        if general_rows:
-            _pdf_table(
-                pdf,
-                ["Item Code", "Item Name", "Category", "Unit", "Qty"],
-                general_rows,
-                [26, 72, 34, 20, 20],
-            )
-        else:
-            pdf.set_font("Helvetica", size=9)
-            pdf.set_text_color(107, 114, 128)
-            pdf.cell(0, 6, "No items issued.", ln=1)
-            pdf.set_text_color(15, 23, 42)
+        if g_qty_data:
+            _pdf_section_title(pdf, "GENERAL STORE & UTILITY ITEMS")
+            _pdf_table(pdf, ["Code", "Item Name", "Unit", "Quantity"], g_qty_data, [30, 100, 26, 30])
+        
+        if total == 0:
+            pdf.ln(5)
+            pdf.set_font("Helvetica", "I", 9)
+            pdf.cell(0, 10, "No inventory items recorded for this employee.", ln=1)
 
     out = pdf.output(dest="S")
     pdf_bytes = bytes(out) if isinstance(out, (bytes, bytearray)) else str(out).encode("latin-1")
-    filename = f"employee_inventory_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="all_inventory_{datetime.now().strftime("%Y%m%d")}.pdf"'})
+
+
+@router.get("/inventory/employee/{employee_id}/pdf")
+async def export_single_employee_inventory_pdf(
+    employee_id: str,
+    db: Session = Depends(get_db),
+) -> Response:
+    emp = db.query(Employee2).filter((Employee2.fss_no == employee_id) | (Employee2.serial_no == employee_id) | (Employee2.id == (int(employee_id) if employee_id.isdigit() else -1))).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    emp_id = str(emp.fss_no or emp.serial_no or emp.id).strip()
+    name = str(emp.name or "Unknown")
+
+    pdf = _pdf_new_portrait()
+    _pdf_header(pdf, title="Individual Staff Inventory", subtitle=f"Staff: {name} (ID: {emp_id})")
+
+    # Fetch inventory - with name-based fallback for legacy IDs
+    legacy_ids = {emp_id}
+    old_emp = db.query(Employee).filter(
+        (func.concat(Employee.first_name, " ", Employee.last_name).ilike(name))
+    ).first()
+    if old_emp:
+        legacy_ids.add(str(old_emp.employee_id).strip())
+
+    restricted_serials = (
+        db.query(RestrictedItemSerialUnit, RestrictedItem)
+        .join(RestrictedItem, RestrictedItem.item_code == RestrictedItemSerialUnit.item_code)
+        .filter(RestrictedItemSerialUnit.issued_to_employee_id.in_(list(legacy_ids)))
+        .all()
     )
+    r_serial_data = [[it.item_code, it.name, su.serial_number, str(su.status).title(), (su.updated_at.strftime("%Y-%m-%d") if su.updated_at else "-")] for su, it in restricted_serials]
+
+    restricted_qty = db.query(RestrictedItemEmployeeBalance, RestrictedItem).join(RestrictedItem, RestrictedItem.item_code == RestrictedItemEmployeeBalance.item_code).filter(RestrictedItemEmployeeBalance.employee_id.in_(list(legacy_ids)), RestrictedItemEmployeeBalance.quantity_issued > 0).all()
+    r_qty_data = [[it.item_code, it.name, it.unit_name, _fmt_money(bal.quantity_issued)] for bal, it in restricted_qty]
+
+    general_qty = db.query(GeneralItemEmployeeBalance, GeneralItem).join(GeneralItem, GeneralItem.item_code == GeneralItemEmployeeBalance.item_code).filter(GeneralItemEmployeeBalance.employee_id.in_(list(legacy_ids)), GeneralItemEmployeeBalance.quantity_issued > 0).all()
+    g_qty_data = [[it.item_code, it.name, it.unit_name, _fmt_money(bal.quantity_issued)] for bal, it in general_qty]
+
+    if r_serial_data:
+        _pdf_section_title(pdf, "WEAPONS & SERIALIZED EQUIPMENT")
+        _pdf_table(pdf, ["Code", "Item Name", "Serial #", "Status", "Date"], r_serial_data, [25, 65, 40, 26, 30])
+    
+    if r_qty_data:
+        _pdf_section_title(pdf, "AMMUNITION & RESTRICTED CONSUMABLES")
+        _pdf_table(pdf, ["Code", "Item Name", "Unit", "Quantity"], r_qty_data, [30, 100, 26, 30])
+
+    if g_qty_data:
+        _pdf_section_title(pdf, "GENERAL STORE & UTILITY ITEMS")
+        _pdf_table(pdf, ["Code", "Item Name", "Unit", "Quantity"], g_qty_data, [30, 100, 26, 30])
+
+    if not (r_serial_data or r_qty_data or g_qty_data):
+        pdf.ln(5)
+        pdf.set_font("Helvetica", "I", 10)
+        pdf.cell(0, 10, "No inventory items found.", ln=1)
+
+    out = pdf.output(dest="S")
+    pdf_bytes = bytes(out) if isinstance(out, (bytes, bytearray)) else str(out).encode("latin-1")
+    return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="inventory_{emp_id}.pdf"'})

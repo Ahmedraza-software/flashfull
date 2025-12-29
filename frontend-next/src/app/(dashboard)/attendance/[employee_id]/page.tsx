@@ -94,7 +94,7 @@ export default function EmployeeAttendancePage() {
         query: { skip: 0, limit: 500 },
       });
       const employees = res?.employees || [];
-      const emp = employees.find((e: any) => 
+      const emp = employees.find((e: any) =>
         String(e.fss_no || e.serial_no || e.id) === employeeId
       );
       if (emp) {
@@ -118,7 +118,12 @@ export default function EmployeeAttendancePage() {
       const to = toDate.format("YYYY-MM-DD");
 
       const url = `${API_BASE_URL}/api/attendance/employee/${encodeURIComponent(employeeId)}/export/pdf?from_date=${encodeURIComponent(from)}&to_date=${encodeURIComponent(to)}`;
-      const res = await fetch(url);
+      const token = localStorage.getItem("access_token");
+      const res = await fetch(url, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
       if (!res.ok) throw new Error(`Export failed (${res.status})`);
       const blob = await res.blob();
       downloadBlob(blob, `attendance_${employeeId}_${from}_${to}.pdf`);
@@ -199,8 +204,8 @@ export default function EmployeeAttendancePage() {
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Row gutter={[12, 12]} align="middle">
             <Col>
-              <Button 
-                icon={<ArrowLeftOutlined />} 
+              <Button
+                icon={<ArrowLeftOutlined />}
                 onClick={() => router.push("/attendance")}
               >
                 Back

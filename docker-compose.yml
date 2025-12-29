@@ -1,90 +1,52 @@
+# Docker Compose for ERP System
+
 services:
-  # MySQL Database
-  mysql:
-    image: mysql:8.0
-    container_name: erp_mysql
-    environment:
-      MYSQL_DATABASE: flash_erp
-      MYSQL_ROOT_PASSWORD: FlashErp2024Root
-      MYSQL_PASSWORD: FlashErp2024Db
-      MYSQL_USER: flash_user
+  # Backend Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: erp_backend
     ports:
-      - "3306:3306"
+      - "8002:8002"
     volumes:
-      - mysql_data:/var/lib/mysql
+      # Persist database and uploads
+      - ./backend/database:/app/database
+      - ./backend/uploads:/app/uploads
+      # Mount source code for development (optional, remove for production)
+      # - ./backend/app:/app/app
+    environment:
+      - PORT=8002
+      # Ensure python prints directly to stdout
+      - PYTHONUNBUFFERED=1
     networks:
       - erp_network
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  # phpMyAdmin
-  phpmyadmin:
-    image: phpmyadmin:latest
-    container_name: erp_phpmyadmin
-    environment:
-      PMA_HOST: mysql
-      MYSQL_ROOT_PASSWORD: FlashErp2024Root
-    ports:
-      - "8080:80"
-    networks:
-      - erp_network
-    restart: unless-stopped
-    depends_on:
-      mysql:
-        condition: service_healthy
-
-  # Combined Frontend + Backend
-  erp_app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: erp_app
-    environment:
-      DATABASE_URL: mysql+pymysql://flash_user:FlashErp2024Db@mysql:3306/flash_erp
-      SECRET_KEY: FlashERP2024ProductionSecretKey!@#$%^&*SuperSecure123
-      ACCESS_TOKEN_EXPIRE_MINUTES: 30
-      ALGORITHM: HS256
-    ports:
-      - "8000:8000"
-    depends_on:
-      mysql:
-        condition: service_healthy
-    networks:
-      - erp_network
-    restart: unless-stopped
-    volumes:
-      - ./backend:/app
-      - ./uploads:/app/uploads
-      - /app/__pycache__
-
-  # Frontend (Next.js)
+  # Frontend Service
   frontend:
     build:
       context: ./frontend-next
       dockerfile: Dockerfile
-    container_name: erp_frontend_app
+    container_name: erp_frontend
     ports:
       - "3000:3000"
-    volumes:
-      - ./frontend-next:/app
-      - /app/node_modules
-      - /app/.next
     environment:
-      - NEXT_PUBLIC_API_BASE_URL=http://46.202.194.55:8001
-      - NEXT_PUBLIC_API_URL=http://46.202.194.55:8001
+      # This URL is used by the browser to reach the backend
+      - NEXT_PUBLIC_API_URL=http://localhost:8002
+      # If you have server-side calls, you might need an internal URL, simpler to keep consistent for now
+    depends_on:
+      backend:
+        condition: service_healthy
     networks:
       - erp_network
-    depends_on:
-      - erp_app
     restart: unless-stopped
-
-volumes:
-  mysql_data:
-    driver: local
 
 networks:
   erp_network:

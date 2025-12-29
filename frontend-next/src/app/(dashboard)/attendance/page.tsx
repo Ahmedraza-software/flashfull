@@ -871,7 +871,7 @@ export default function AttendancePage() {
                 </Button>
               </Space>
             }
-            destroyOnClose
+            destroyOnHidden
           >
             <Space direction="vertical" style={{ width: "100%" }} size={12}>
               <div>
@@ -934,7 +934,7 @@ export default function AttendancePage() {
                 </Button>
               )
             }
-            destroyOnClose
+            destroyOnHidden
           >
             <Space direction="vertical" style={{ width: "100%" }} size={8}>
               {leaveInfoLoading ? (

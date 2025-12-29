@@ -1,14 +1,79 @@
-Dockerfile
-.dockerignore
-node_modules
-npm-debug.log
-README.md
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.git
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+__tests__/
+*.test.js
+*.test.ts
+*.test.tsx
+*.spec.js
+*.spec.ts
+*.spec.tsx
+
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# Production
+*.tsbuildinfo
+next-env.d.ts
+
+# Misc
+.DS_Store
+*.pem
+Thumbs.db
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.editorconfig
+
+# Environment files (will be set via docker-compose)
+.env*.local
+.env.development
+.env.test
+
+# Git
+.git/
 .gitignore
-.next
-out
+.gitattributes
+
+# Documentation
+README.md
+*.md
+CHANGELOG.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Vercel
+.vercel/
+
+# TypeScript
+*.tsbuildinfo
+
+# Test artifacts
+jest.config.js
+jest.setup.js
+babel.config.js
+
+# Storybook
+.storybook/
+storybook-static/

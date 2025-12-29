@@ -1,9 +1,10 @@
-from __future__ import annotations
+
 
 from calendar import monthrange
 from datetime import date, datetime, time, timedelta
+from typing import Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -139,6 +140,27 @@ def _to_float(v) -> float:
         return float(s)
     except Exception:
         return 0.0
+
+
+def _normalize_attendance_status_and_leave_type(status: str | None, leave_type: str | None) -> tuple[str, str | None]:
+    st = (status or "").strip().lower()
+    lt = (leave_type or "").strip().lower() or None
+
+    if st in ("", "-", "unmarked"):
+        return "unmarked", None
+
+    if st.startswith("leave"):
+        if lt is None:
+            if "unpaid" in st:
+                lt = "unpaid"
+            elif "paid" in st:
+                lt = "paid"
+        return "leave", lt
+
+    if st in ("present", "late", "absent"):
+        return st, None
+
+    return st, lt
 
 
 def _build_payroll_pdf(*, title: str, subtitle: str, rows: list[dict], summary: dict) -> bytes:
@@ -301,10 +323,10 @@ def _build_payroll_pdf(*, title: str, subtitle: str, rows: list[dict], summary: 
             _get_bank_name(r.get("bank_details", "") or ""),  # Bank Name
             _get_bank_account_number(r.get("bank_details", "") or ""),  # Bank Account Number
             _fmt_money(r.get("base_salary", 0.0)),  # Salary Per Month
-            _fmt_int(r.get("present_days", 0)),  # Presents
+            _fmt_int(r.get("total_days", 0)),  # Presents (User wants Total Paid Days here)
             _fmt_int(r.get("total_days", 0)),  # Total
             _fmt_int(r.get("pre_days", 0)),  # Pre. Days
-            _fmt_int(r.get("cur_days", 0)),  # Cur. Days
+            _fmt_int(r.get("cur_days", 0) or r.get("total_days", 0)),  # Cur. Days (Default to total if 0)
             _fmt_int(r.get("leave_encashment_days", 0)),  # Leave Enc.
             _fmt_int(r.get("total_days", 0)),  # Total Days
             _fmt_money(r.get("total_salary", 0.0)),  # Total Salary
@@ -378,9 +400,26 @@ async def payroll_report(
         .all()
     )
 
-    by_emp: dict[str, list[AttendanceRecord]] = {}
+    # Build lookup by employee_id and date (Robust logic from range_report)
+    by_emp_by_date: dict[str, dict[date, AttendanceRecord]] = {}
     for rec in attendance:
-        by_emp.setdefault(rec.employee_id, []).append(rec)
+        e_id_str = str(rec.employee_id or "").strip()
+        
+        # Ensure date is a plain date object
+        r_dt = rec.date
+        if hasattr(r_dt, "date") and callable(getattr(r_dt, "date")):
+            rec_date = r_dt.date()
+        elif isinstance(r_dt, date):
+            rec_date = r_dt
+        else:
+            try:
+                rec_date = date.fromisoformat(str(r_dt).split(' ')[0])
+            except:
+                continue
+
+        if e_id_str not in by_emp_by_date:
+            by_emp_by_date[e_id_str] = {}
+        by_emp_by_date[e_id_str][rec_date] = rec
 
     paid_status_by_emp: dict[str, str] = {
         r.employee_id: (r.status or "unpaid")
@@ -417,6 +456,7 @@ async def payroll_report(
         absent_days = 0
         paid_leave_days = 0
         unpaid_leave_days = 0
+        unmarked_days = 0
 
         overtime_minutes = 0
         overtime_pay = 0.0
@@ -428,38 +468,67 @@ async def payroll_report(
 
         late_rate = 0.0
 
-        for a in by_emp.get(employee_id, []):
-            st = (a.status or "").lower().strip()
+        # Try matching by FSS No, Serial No, or ID
+        possible_ids = [str(x).strip() for x in [e.fss_no, e.serial_no, e.id] if x]
+        
+        dcur = start
+        while dcur <= end:
+            a = None
+            for pid in possible_ids:
+                a = by_emp_by_date.get(pid, {}).get(dcur)
+                if a: break
+
+            if a is not None:
+                st, lt = _normalize_attendance_status_and_leave_type(a.status, a.leave_type)
+            else:
+                st, lt = "unmarked", None
+
             if st == "present":
                 present_days += 1
             elif st == "late":
+                present_days += 1
                 late_days += 1
             elif st == "absent":
                 absent_days += 1
             elif st == "leave":
-                if (a.leave_type or "").lower().strip() == "unpaid":
+                if (lt or "").lower().strip() == "unpaid":
                     unpaid_leave_days += 1
                 else:
                     paid_leave_days += 1
+            else:
+                # treat unmarked as absent for payroll purposes
+                unmarked_days += 1
 
-            if a.overtime_minutes and a.overtime_rate:
-                overtime_minutes += int(a.overtime_minutes or 0)
-                overtime_pay += (float(a.overtime_minutes) / 60.0) * float(a.overtime_rate)
-            # Keep track of the rate (use the latest non-zero rate) even if no minutes
-            if a.overtime_rate and float(a.overtime_rate or 0) > 0:
-                overtime_rate = float(a.overtime_rate)
+            if a is not None:
+                if a.overtime_minutes and a.overtime_rate:
+                    overtime_minutes += int(a.overtime_minutes or 0)
+                    overtime_pay += (float(a.overtime_minutes) / 60.0) * float(a.overtime_rate)
+                if a.overtime_rate and float(a.overtime_rate or 0) > 0:
+                    overtime_rate = float(a.overtime_rate)
 
-            if a.late_minutes:
-                late_minutes += int(a.late_minutes or 0)
-            if a.late_deduction:
-                late_deduction += float(a.late_deduction or 0)
+                if a.late_minutes:
+                    late_minutes += int(a.late_minutes or 0)
+                if a.late_deduction:
+                    late_deduction += float(a.late_deduction or 0)
+            
+            dcur += timedelta(days=1)
 
         unpaid_leave_deduction = float(unpaid_leave_days) * 1000.0
 
-        gross_pay = base_salary + allowances + overtime_rate + overtime_pay
+        presents_total = int(present_days + paid_leave_days)
+        total_days = presents_total
+        
+        # In monthly report, we still pay full salary by default UNLESS we want to prorate?
+        # User seems to expect proration based on the 7.27M (1 day salary) they saw.
+        # Let's prorate in monthly too for consistency if requested.
+        # But wait, 7.27M came from Range. 
+        # I'll keep Monthly as full salary unless they ask, BUT I'll fix the counters.
+        
+        gross_pay = base_salary + allowances + overtime_pay
         adv_ded = float(advance_ded_by_emp_db_id.get(e.id, 0.0) or 0.0)
         net_pay = gross_pay - late_deduction - unpaid_leave_deduction - adv_ded
 
+        total_salary = base_salary # Default to full for monthly
         total_gross += gross_pay
         total_net += net_pay
 
@@ -477,7 +546,10 @@ async def payroll_report(
                 "bank_details": e.bank_accounts or "",
                 "base_salary": base_salary,
                 "allowances": allowances,
-                "present_days": present_days,
+                "basic_earned": total_salary,
+                "total_days": total_days,
+                "total_salary": total_salary,
+                "present_days": presents_total,
                 "late_days": late_days,
                 "absent_days": absent_days,
                 "paid_leave_days": paid_leave_days,
@@ -509,9 +581,10 @@ async def payroll_report(
 async def payroll_range_report(
     from_date: str,
     to_date: str,
-    month: str | None = None,
+    month: str = "", # Make it required string, pass empty if needed
     db: Session = Depends(get_db),
 ) -> PayrollReportResponse:
+    # month = None # temp fix
     start = _parse_date(from_date, field="from_date")
     end = _parse_date(to_date, field="to_date")
     if start > end:
@@ -544,10 +617,25 @@ async def payroll_range_report(
     # Build lookup by employee_id and date
     by_emp_by_date: dict[str, dict[date, AttendanceRecord]] = {}
     for rec in attendance:
-        emp_id = str(rec.employee_id or "").strip()
-        # Ensure date is a date object for consistent lookup
-        rec_date = rec.date if isinstance(rec.date, date) else date.fromisoformat(str(rec.date))
-        by_emp_by_date.setdefault(emp_id, {})[rec_date] = rec
+        # Get all potential ID keys for this record
+        e_id_str = str(rec.employee_id or "").strip()
+        
+        # Ensure date is a plain date object
+        r_dt = rec.date
+        if hasattr(r_dt, "date") and callable(getattr(r_dt, "date")):
+            rec_date = r_dt.date()
+        elif isinstance(r_dt, date):
+            rec_date = r_dt
+        else:
+            try:
+                rec_date = date.fromisoformat(str(r_dt).split(' ')[0])
+            except:
+                continue
+
+        # Map this record to its ID
+        if e_id_str not in by_emp_by_date:
+            by_emp_by_date[e_id_str] = {}
+        by_emp_by_date[e_id_str][rec_date] = rec
 
     paid_status_by_emp: dict[str, str] = {
         r.employee_id: (r.status or "unpaid")
@@ -609,26 +697,37 @@ async def payroll_range_report(
 
         fine_deduction = 0.0
 
+        # Try matching by FSS No, Serial No, or ID
+        possible_ids = [str(x).strip() for x in [e.fss_no, e.serial_no, e.id] if x]
+        
         dcur = day_cursor_start
         while dcur <= end:
-            a = by_emp_by_date.get(employee_id, {}).get(dcur)
-            st = (a.status or "unmarked").lower().strip() if a else "unmarked"
+            a = None
+            for pid in possible_ids:
+                a = by_emp_by_date.get(pid, {}).get(dcur)
+                if a: break
+
+            if a is not None:
+                st, lt = _normalize_attendance_status_and_leave_type(a.status, a.leave_type)
+            else:
+                st, lt = "unmarked", None
 
             if st == "present":
                 present_days += 1
             elif st == "late":
+                present_days += 1
                 late_days += 1
             elif st == "absent":
                 absent_days += 1
             elif st == "leave":
-                if a and (a.leave_type or "").lower().strip() == "unpaid":
+                if (lt or "").lower().strip() == "unpaid":
                     unpaid_leave_days += 1
                 else:
                     paid_leave_days += 1
             else:
-                # treat unmarked as absent for payroll purposes
                 unmarked_days += 1
-
+            
+            
             if a is not None:
                 if a.overtime_minutes and a.overtime_rate:
                     overtime_minutes += int(a.overtime_minutes or 0)
@@ -648,18 +747,17 @@ async def payroll_range_report(
             dcur = dcur + timedelta(days=1)
 
         # overtime_rate is already set from attendance records above
-
         if late_minutes > 0:
             late_rate = float(late_deduction) / float(late_minutes)
 
         # Calculate payable days from attendance (for reference)
-        payable_days = int(present_days + late_days + paid_leave_days)
+        # Presents total (consistently including all paid day types)
+        # present_days = strictly 'present' or 'late' status
+        # paid_leave_days = strictly 'leave' (paid) status
+        presents_total = int(present_days + paid_leave_days)
+        payable_days = presents_total
         if payable_days > working_days:
             payable_days = working_days
-
-        # Presents total (paid days) = present + late + paid leave
-        # UI can still show Leave (L), but payroll should count PAID leave as paid day.
-        presents_total = present_days + late_days + paid_leave_days
 
         sheet = sheet_by_emp_db_id.get(e.id)
         leave_encashment_days = int(sheet.leave_encashment_days or 0) if sheet else 0
@@ -685,6 +783,9 @@ async def payroll_range_report(
         if total_days < 0:
             total_days = 0
 
+        if cur_days == 0 and presents_total > 0 and (not sheet or sheet.cur_days_override is None):
+            cur_days = presents_total
+
         total_salary = float(total_days) * float(day_rate)
 
         allow_other = float(sheet.allow_other or 0.0) if sheet else 0.0
@@ -701,8 +802,8 @@ async def payroll_range_report(
         # unpaid leave + absent + unmarked are already excluded by prorating, so unpaid_leave_deduction is 0 here.
         unpaid_leave_deduction = 0.0
 
-        # Gross as per sheet: Total Salary + OT Rate + OT Amount + (Allowance + Other)
-        gross_pay = total_salary + overtime_rate + overtime_pay + allowances + allow_other
+        # Gross as per sheet: Total Salary + OT Amount + (Allowance + Other)
+        gross_pay = total_salary + overtime_pay + allowances + allow_other
 
         # Net payable: Gross - (EOBI + Tax + Fine/Adv + Late Deduction)
         net_pay = gross_pay - eobi - tax - fine_adv - late_deduction - unpaid_leave_deduction
@@ -733,7 +834,7 @@ async def payroll_range_report(
                 "leave_encashment_days": leave_encashment_days,
                 "total_days": total_days,
                 "total_salary": total_salary,
-                "present_days": present_days,
+                "present_days": presents_total,
                 "late_days": late_days,
                 "absent_days": absent_days,
                 "paid_leave_days": paid_leave_days,
@@ -848,10 +949,12 @@ async def bulk_upsert_payroll_sheet_entries(
 @router.get("/export/pdf")
 async def export_payroll_pdf(
     month: str,
-    from_date: str | None = None,
-    to_date: str | None = None,
+    from_date: str = "",
+    to_date: str = "",
     db: Session = Depends(get_db),
 ) -> Response:
+    # from_date = None
+    # to_date = None
     def _fmt_money(v) -> str:
         try:
             n = float(v)
@@ -889,10 +992,12 @@ async def export_payroll_pdf(
 @router.get("/export/csv")
 async def export_payroll_csv(
     month: str,
-    from_date: str | None = None,
-    to_date: str | None = None,
+    from_date: str = "",
+    to_date: str = "",
     db: Session = Depends(get_db),
 ) -> Response:
+    # from_date = None
+    # to_date = None
     def _fmt_money(v) -> str:
         try:
             n = float(v)

@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 from calendar import monthrange
 from datetime import date, datetime, time, timedelta
+import os
+import io
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -10,6 +13,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from fpdf import FPDF
+from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.api.dependencies import require_permission, get_current_active_user
@@ -39,6 +43,10 @@ def _days_inclusive(start: date, end: date) -> int:
     return int((end - start).days) + 1
 
 
+def _days_exclusive_end(start: date, end: date) -> int:
+    return int((end - start).days)
+
+
 def _to_float(v) -> float:
     if v is None:
         return 0.0
@@ -49,6 +57,27 @@ def _to_float(v) -> float:
         return float(s)
     except Exception:
         return 0.0
+
+
+def _normalize_attendance_status_and_leave_type(status: str | None, leave_type: str | None) -> tuple[str, str | None]:
+    st = (status or "").strip().lower()
+    lt = (leave_type or "").strip().lower() or None
+
+    if st in ("", "-", "unmarked"):
+        return "unmarked", None
+
+    if st.startswith("leave"):
+        if lt is None:
+            if "unpaid" in st:
+                lt = "unpaid"
+            elif "paid" in st:
+                lt = "paid"
+        return "leave", lt
+
+    if st in ("present", "late", "absent"):
+        return st, None
+
+    return st, lt
 
 
 @router.get("/range-report")
@@ -74,7 +103,10 @@ async def payroll2_range_report(
 
     month_label = month or _month_label(end)
     cutoff = datetime.combine(end, time.max)
-    working_days = _days_inclusive(start, end)
+    # Payroll2 treats to_date as exclusive (count days between dates, not including to_date)
+    working_days = _days_exclusive_end(start, end)
+    if working_days < 0:
+        working_days = 0
 
     # Load all employees
     employees = (
@@ -94,7 +126,7 @@ async def payroll2_range_report(
     # Load all attendance records in the date range
     attendance = (
         db.query(AttendanceRecord)
-        .filter(AttendanceRecord.date >= start, AttendanceRecord.date <= end)
+        .filter(AttendanceRecord.date >= start, AttendanceRecord.date < end)
         .all()
     )
 
@@ -135,6 +167,7 @@ async def payroll2_range_report(
         employee_id = str(e.fss_no or e.serial_no or e.id).strip()
         
         base_salary = _to_float(e.salary)
+        # Daily rate is computed from the selected payroll period day count (to_date is exclusive)
         day_rate = (base_salary / float(working_days)) if working_days > 0 else 0.0
 
         # Count attendance from records
@@ -158,13 +191,13 @@ async def payroll2_range_report(
         present_dates_cur: list[str] = []   # Current month dates
         end_month = end.month
 
-        # Iterate through each day in the range
+        # Iterate through each day in the range (end date is exclusive)
         dcur = start
-        while dcur <= end:
+        while dcur < end:
             a = by_emp_by_date.get(employee_id, {}).get(dcur)
             
             if a is not None:
-                st = (a.status or "").lower().strip()
+                st, lt = _normalize_attendance_status_and_leave_type(a.status, a.leave_type)
                 
                 if st == "present":
                     present_days += 1
@@ -183,7 +216,7 @@ async def payroll2_range_report(
                 elif st == "absent":
                     absent_days += 1
                 elif st == "leave":
-                    if (a.leave_type or "").lower().strip() == "unpaid":
+                    if (lt or "").lower().strip() == "unpaid":
                         unpaid_leave_days += 1
                     else:
                         paid_leave_days += 1
@@ -252,8 +285,9 @@ async def payroll2_range_report(
         # Total fine/adv = attendance fine + advance deduction + extra fine/adv
         fine_adv = fine_deduction + adv_ded + fine_adv_extra
 
-        # Gross = Total Salary + OT Rate + OT Amount + Allow/Other
-        gross_pay = total_salary + overtime_rate + overtime_pay + allow_other
+        # Gross = Total Salary + OT Amount + Allow/Other
+        # (overtime_rate is a rate, not an earning)
+        gross_pay = total_salary + overtime_pay + allow_other
 
         # Net = Gross - EOBI - Tax - Fine/Adv - Late Deduction
         net_pay = gross_pay - eobi - tax - fine_adv - late_deduction
@@ -282,6 +316,7 @@ async def payroll2_range_report(
             "fss_no": e.fss_no,
             "eobi_no": e.eobi_no,
             "cnic": e.cnic or "",
+            "mobile_no": (e.mobile_no or e.home_contact or ""),
             "bank_name": bank_name,
             "bank_account_number": bank_account_number,
             "base_salary": base_salary,
@@ -341,17 +376,14 @@ async def payroll2_range_report(
     return {"month": month_label, "summary": summary, "rows": rows}
 
 
-from pydantic import BaseModel
-from typing import List, Optional
-import io
-
-
 class Payroll2RowExport(BaseModel):
     serial_no: Optional[str] = None
     fss_no: Optional[str] = None
     name: str
     base_salary: float
+    mobile_no: Optional[str] = ""
     presents_total: int
+    paid_leave_days: Optional[int] = 0
     pre_days: int
     cur_days: int
     leave_encashment_days: int
@@ -377,10 +409,8 @@ class Payroll2RowExport(BaseModel):
     bank_name: Optional[str] = ""
     bank_account_number: Optional[str] = ""
 
-
 class Payroll2ExportRequest(BaseModel):
     rows: List[Payroll2RowExport]
-
 
 def _fmt_money(v: float) -> str:
     if v == 0:
@@ -388,13 +418,12 @@ def _fmt_money(v: float) -> str:
     return f"{v:,.0f}"
 
 
-import os
-
 class PayrollPDF(FPDF):
     """Custom PDF class with header repetition on each page"""
     
     def __init__(self, month: str, from_date: str, to_date: str, headers: list, col_widths: list, admin_name: str = "Admin"):
-        super().__init__(orientation="L", unit="mm", format="A4")
+        # Use A3 landscape so all columns fit (A4 landscape is too narrow and cuts columns off)
+        super().__init__(orientation="L", unit="mm", format="A3")
         self.month = month
         self.from_date = from_date
         self.to_date = to_date
@@ -470,8 +499,9 @@ async def export_payroll2_pdf(
         admin_name = current_user.full_name or current_user.username or "Admin"
         
         # All columns including CNIC and Bank Details with better spacing
-        headers = ["#", "FSS No.", "Employee Name", "CNIC", "Bank Name", "Bank Account Number", "Salary/Month", "Presents", "Total", "Pre Days", "Cur Days", "Leave Enc.", "Total Days", "Total Salary", "OT Rate", "OT", "OT Amount", "Allow./Other", "Gross Salary", "EOBI", "#", "EOBI", "Tax", "Fine (Att)", "Fine/Adv.", "Net Payable", "Remarks", "Bank/Cash"]
-        col_widths = [8, 12, 25, 18, 20, 22, 16, 10, 8, 8, 8, 10, 10, 16, 12, 8, 12, 12, 16, 10, 8, 10, 10, 10, 10, 16, 22, 18]
+        headers = ["#", "FSS No.", "Employee Name", "CNIC", "Mobile", "Bank Name", "Bank Account Number", "Salary/Month", "Presents", "Paid Leave", "Total", "Pre Days", "Cur Days", "Leave Enc.", "Total Days", "Total Salary", "OT Rate", "OT", "OT Amount", "Allow./Other", "Gross Salary", "EOBI", "#", "EOBI", "Tax", "Fine (Att)", "Fine/Adv.", "Net Payable", "Remarks", "Bank/Cash"]
+        # Wider columns for long text fields; total width tuned to fit A3 landscape.
+        col_widths = [8, 12, 26, 20, 18, 22, 24, 16, 10, 8, 8, 8, 8, 10, 10, 16, 12, 8, 12, 12, 16, 14, 8, 10, 10, 10, 10, 16, 22, 18]
         
         pdf = PayrollPDF(month, from_date, to_date, headers, col_widths, admin_name)
         pdf.add_page()
@@ -480,6 +510,14 @@ async def export_payroll2_pdf(
         pdf.set_font("Helvetica", "", 6)
         total_gross = 0.0
         total_net = 0.0
+
+        def _truncate(s: str, max_len: int) -> str:
+            ss = (s or "").strip()
+            if len(ss) <= max_len:
+                return ss
+            if max_len <= 3:
+                return ss[:max_len]
+            return ss[: max_len - 2] + ".."
         
         def _get_bank_name_from_details(bank_details):
             """Extract bank name from bank_details string."""
@@ -524,10 +562,12 @@ async def export_payroll2_pdf(
                 r.fss_no or "",
                 (r.name[:16] + "..") if len(r.name) > 18 else r.name,
                 cnic,
+                getattr(r, "mobile_no", "") or "",
                 bank_name,
                 bank_account_number,
                 _fmt_money(r.base_salary),
                 str(r.presents_total),
+                str(getattr(r, "paid_leave_days", 0) or 0),
                 str(r.total_days),
                 str(r.pre_days),
                 str(r.cur_days),
@@ -549,19 +589,31 @@ async def export_payroll2_pdf(
                 (r.remarks or "")[:16],
                 (r.bank_cash or "")[:10],
             ]
+
+            # Prevent long strings from overflowing into adjacent columns.
+            row_data[1] = _truncate(str(row_data[1]), 18)   # FSS No.
+            row_data[2] = _truncate(str(row_data[2]), 26)   # Employee Name
+            row_data[3] = _truncate(str(row_data[3]), 22)   # CNIC
+            row_data[4] = _truncate(str(row_data[4]), 18)   # Mobile
+            row_data[5] = _truncate(str(row_data[5]), 20)   # Bank Name
+            row_data[6] = _truncate(str(row_data[6]), 24)   # Bank Account
+            row_data[21] = _truncate(str(row_data[21]), 16) # EOBI #
+            row_data[28] = _truncate(str(row_data[28]), 22) # Remarks
+            row_data[29] = _truncate(str(row_data[29]), 18) # Bank/Cash
             
             for i, val in enumerate(row_data):
-                align = "L" if i in [2, 3, 4, 5, 19, 25, 26] else "R"
+                align = "L" if i in [1, 2, 3, 4, 5, 6, 21, 28, 29] else "R"
                 pdf.cell(col_widths[i], 4.5, val, border=1, align=align)
             pdf.ln()
         
         # Totals row with larger font
         pdf.set_font("Helvetica", "B", 6)
-        pdf.cell(sum(col_widths[:18]), 5, "TOTALS:", border=1, align="R")
-        pdf.cell(col_widths[18], 5, _fmt_money(total_gross), border=1, align="R")
-        pdf.cell(sum(col_widths[19:24]), 5, "", border=1)
-        pdf.cell(col_widths[24], 5, _fmt_money(total_net), border=1, align="R")
-        pdf.cell(sum(col_widths[25:]), 5, "", border=1)
+        # Align totals under Gross Salary (index 20) and Net Payable (index 27)
+        pdf.cell(sum(col_widths[:20]), 5, "TOTALS:", border=1, align="R")
+        pdf.cell(col_widths[20], 5, _fmt_money(total_gross), border=1, align="R")
+        pdf.cell(sum(col_widths[21:27]), 5, "", border=1)
+        pdf.cell(col_widths[27], 5, _fmt_money(total_net), border=1, align="R")
+        pdf.cell(sum(col_widths[28:]), 5, "", border=1)
         pdf.ln()
         
         # Summary

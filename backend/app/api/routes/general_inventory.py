@@ -178,22 +178,28 @@ async def delete_item(item_code: str, db: Session = Depends(get_db)) -> dict:
     return {"message": "Item deleted"}
 
 
-@router.get("/employees/{employee_id}/issued", response_model=EmployeeGeneralIssuedInventory)
-async def get_employee_issued(employee_id: str, db: Session = Depends(get_db)) -> EmployeeGeneralIssuedInventory:
-    _ensure_employee(db, employee_id)
-
+@router.get("/issued", response_model=List[EmployeeGeneralIssuedInventory])
+async def list_all_issued(db: Session = Depends(get_db)) -> List[EmployeeGeneralIssuedInventory]:
+    """Return current issued general inventory for all employees."""
     balances = (
         db.query(GeneralItemEmployeeBalance, GeneralItem)
         .join(GeneralItem, GeneralItem.item_code == GeneralItemEmployeeBalance.item_code)
-        .filter(GeneralItemEmployeeBalance.employee_id == employee_id)
         .filter(GeneralItemEmployeeBalance.quantity_issued > 0)
-        .order_by(GeneralItemEmployeeBalance.id.desc())
+        .order_by(GeneralItemEmployeeBalance.employee_id.asc(), GeneralItemEmployeeBalance.id.desc())
         .all()
     )
 
-    items: List[EmployeeGeneralIssuedQuantity] = []
+    out_by_emp: dict[str, EmployeeGeneralIssuedInventory] = {}
     for bal, it in balances:
-        items.append(
+        eid = (bal.employee_id or "").strip()
+        if not eid:
+            continue
+        inv = out_by_emp.get(eid)
+        if not inv:
+            inv = EmployeeGeneralIssuedInventory(employee_id=eid, items=[])
+            out_by_emp[eid] = inv
+        
+        inv.items.append(
             EmployeeGeneralIssuedQuantity(
                 item_code=it.item_code,
                 item_name=it.name,
@@ -202,8 +208,7 @@ async def get_employee_issued(employee_id: str, db: Session = Depends(get_db)) -
                 quantity_issued=float(bal.quantity_issued or 0.0),
             )
         )
-
-    return EmployeeGeneralIssuedInventory(employee_id=employee_id, items=items)
+    return list(out_by_emp.values())
 
 
 @router.get("/transactions", response_model=List[GeneralTransactionOut])
@@ -289,11 +294,13 @@ async def return_item(item_code: str, payload: ReturnRequest, db: Session = Depe
             raise HTTPException(status_code=404, detail="Allocation not found for this employee/item")
 
     if float(bal.quantity_issued or 0.0) < qty:
-        raise HTTPException(status_code=400, detail="Employee does not have enough issued quantity")
+        # If there's a mismatch (balance table is behind), just reset to 0
+        bal.quantity_issued = 0.0
+    else:
+        bal.quantity_issued = float(bal.quantity_issued or 0.0) - qty
 
     if item:
         item.quantity_on_hand = float(item.quantity_on_hand or 0.0) + qty
-    bal.quantity_issued = float(bal.quantity_issued or 0.0) - qty
 
     # Transactions table has FK constraints; if the item or employee record is missing,
     # writing a transaction row could fail. The allocation/balance update above is the

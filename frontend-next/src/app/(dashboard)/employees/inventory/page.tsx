@@ -103,8 +103,9 @@ export default function EmployeeInventoryPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [employeesRes, restrictedRes, itemsRes, txRes, restrictedTxRes] = await Promise.all([
-        api.get<{ employees: Employee2[] }>("/api/employees2/", { query: { limit: 500 } }),
+      const [employeesRes, oldEmployeesRes, restrictedRes, itemsRes, generalTxRes, restrictedTxRes] = await Promise.all([
+        api.get<{ employees: Employee2[] }>("/api/employees2/", { query: { limit: 1000 } }),
+        api.get<{ employees: any[] }>("/api/employees/", { query: { limit: 1000 } }),
         api.get<RestrictedIssuedInventory[]>("/api/restricted-inventory/issued"),
         api.get<GeneralItem[]>("/api/general-inventory/items"),
         api.get<GeneralTxRow[]>("/api/general-inventory/transactions", { query: { limit: 5000 } }),
@@ -112,42 +113,62 @@ export default function EmployeeInventoryPage() {
       ]);
 
       const emps = Array.isArray(employeesRes?.employees) ? employeesRes.employees : [];
+      const oldEmps = Array.isArray(oldEmployeesRes?.employees) ? oldEmployeesRes.employees : [];
       setEmployees(emps);
-      setRestrictedIssued(Array.isArray(restrictedRes) ? restrictedRes : []);
+
+      // 1. Build Reference Maps
+      const oldIdToName = new Map<string, string>();
+      for (const e of oldEmps) {
+        const id = String(e.employee_id || "").trim();
+        if (id) {
+          const gn = [e.first_name, e.last_name].filter(Boolean).join(" ");
+          oldIdToName.set(id, gn);
+        }
+      }
+
+      const empByModernId = new Map<string, Employee2>();
+      for (const e of emps) empByModernId.set(String(e.fss_no || e.serial_no || e.id), e);
+
+      const empByModernName = new Map<string, Employee2>();
+      for (const e of emps) {
+        const cn = String(e.name || "").trim().toLowerCase();
+        if (cn && !empByModernName.has(cn)) empByModernName.set(cn, e);
+      }
+
+      // 2. Map Restricted Issued Inventory
+      const rIssuedMapped = (Array.isArray(restrictedRes) ? restrictedRes : []).map((r) => {
+        const rawId = String(r.employee_id || "").trim();
+        let modernEmp = empByModernId.get(rawId);
+        if (!modernEmp) {
+          const oldName = oldIdToName.get(rawId);
+          if (oldName) modernEmp = empByModernName.get(oldName.trim().toLowerCase());
+        }
+        const mid = modernEmp ? String(modernEmp.fss_no || modernEmp.serial_no || modernEmp.id) : rawId;
+        return { ...r, employee_id: mid };
+      });
+      setRestrictedIssued(rIssuedMapped);
       setRestrictedTx(Array.isArray(restrictedTxRes) ? restrictedTxRes : []);
 
+      // 3. Calculate General Issued Inventory from Transactions
       const itemByCode = new Map<string, GeneralItem>();
       for (const it of Array.isArray(itemsRes) ? itemsRes : []) itemByCode.set(String(it.item_code), it);
 
-      const empById = new Map<string, Employee2>();
-      for (const e of emps) empById.set(String(e.fss_no || e.serial_no || e.id), e);
-
-      const txs = Array.isArray(txRes) ? txRes : [];
-
-      const byKey = new Map<
-        string,
-        {
-          employee_id: string;
-          item_code: string;
-          qty: number;
-          lastIssueAt: string;
-          lastIssueNote: string;
-        }
-      >();
+      const txs = Array.isArray(generalTxRes) ? generalTxRes : [];
+      const balanceMap = new Map<string, { employee_id: string; item_code: string; qty: number; lastIssueAt: string; lastIssueNote: string }>();
 
       for (const t of txs) {
         const action = String(t.action || "").toUpperCase();
         if (action !== "ISSUE" && action !== "RETURN") continue;
 
-        const employeeId = String(t.employee_id || "").trim();
-        const itemCode = String(t.item_code || "").trim();
-        if (!employeeId || !itemCode) continue;
+        const rawId = String(t.employee_id || "").trim();
+        const code = String(t.item_code || "").trim();
+        if (!rawId || !code) continue;
 
         const qty = Number(t.quantity ?? 0);
         if (!Number.isFinite(qty) || qty <= 0) continue;
 
-        const key = `${employeeId}__${itemCode}`;
-        const prev = byKey.get(key) || { employee_id: employeeId, item_code: itemCode, qty: 0, lastIssueAt: "", lastIssueNote: "" };
+        const key = `${rawId}__${code}`;
+        const prev = balanceMap.get(key) || { employee_id: rawId, item_code: code, qty: 0, lastIssueAt: "", lastIssueNote: "" };
 
         if (action === "ISSUE") {
           prev.qty += qty;
@@ -159,27 +180,36 @@ export default function EmployeeInventoryPage() {
         } else {
           prev.qty -= qty;
         }
-        byKey.set(key, prev);
+        balanceMap.set(key, prev);
       }
 
-      const rowsOut: GeneralAllocationRow[] = Array.from(byKey.values())
-        .filter((v) => Number(v.qty) > 0)
-        .map((v) => {
-          const emp = empById.get(String(v.employee_id));
-          const employee_name = emp ? emp.name : v.employee_id;
-          const item = itemByCode.get(String(v.item_code));
-          return {
-            id: `${v.employee_id}__${v.item_code}`,
-            employee_id: v.employee_id,
-            employee_name,
-            item_code: v.item_code,
-            item_name: item?.name || v.item_code,
-            unit_name: item?.unit_name || "unit",
-            quantity: Number(v.qty),
-            notes: v.lastIssueNote || "-",
-            created_at: v.lastIssueAt,
-          };
+      const rowsOut: GeneralAllocationRow[] = [];
+      for (const v of Array.from(balanceMap.values())) {
+        if (v.qty <= 0) continue;
+
+        const rawId = v.employee_id;
+        let modernEmp = empByModernId.get(rawId);
+        if (!modernEmp) {
+          const oldName = oldIdToName.get(rawId);
+          if (oldName) modernEmp = empByModernName.get(oldName.trim().toLowerCase());
+        }
+
+        const eid = modernEmp ? String(modernEmp.fss_no || modernEmp.serial_no || modernEmp.id) : rawId;
+        const employee_name = modernEmp ? modernEmp.name : (oldIdToName.get(rawId) || rawId);
+        const item = itemByCode.get(v.item_code);
+
+        rowsOut.push({
+          id: `${eid}__${v.item_code}`,
+          employee_id: eid,
+          employee_name,
+          item_code: v.item_code,
+          item_name: item?.name || v.item_code,
+          unit_name: item?.unit_name || "unit",
+          quantity: v.qty,
+          notes: v.lastIssueNote || "-",
+          created_at: v.lastIssueAt || dayjs().toISOString(),
         });
+      }
 
       rowsOut.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
       setGeneralRows(rowsOut);
@@ -210,31 +240,44 @@ export default function EmployeeInventoryPage() {
   }, [employees]);
 
   const byEmployee = useMemo(() => {
+    const modernByModernId = new Map<string, Employee2>();
+    const modernByModernName = new Map<string, Employee2>();
+    for (const e of employees) {
+      modernByModernId.set(String(e.fss_no || e.serial_no || e.id), e);
+      const cn = String(e.name || "").trim().toLowerCase();
+      if (cn && !modernByModernName.has(cn)) modernByModernName.set(cn, e);
+    }
+
     const restrictedMap = new Map<string, RestrictedIssuedInventory>();
-    for (const r of restrictedIssued) restrictedMap.set(String(r.employee_id), r);
+    for (const r of restrictedIssued) {
+      const rid = String(r.employee_id).trim();
+      let emp = modernByModernId.get(rid);
+      // Backend for restricted issued might return modern ID already, but let's be safe
+      const mid = emp ? String(emp.fss_no || emp.serial_no || emp.id) : rid;
+      restrictedMap.set(mid, { ...r, employee_id: mid });
+    }
 
     const restrictedLastIssueBySerial = new Map<number, string>();
     const restrictedLastIssueByQtyKey = new Map<string, string>();
+    // ... Transactions matching ...
+    // (OMITTED for brevity in ReplacementContent but will be included in the final file)
+    // Actually, I'll just write the whole block to be safe.
 
     for (const t of Array.isArray(restrictedTx) ? restrictedTx : []) {
       const action = String(t.action || "").toUpperCase();
       if (action !== "ISSUE") continue;
-
       const createdAt = String(t.created_at || "");
       const serialId = Number(t.serial_unit_id ?? 0);
       if (Number.isFinite(serialId) && serialId > 0) {
-        const prev = restrictedLastIssueBySerial.get(serialId);
-        if (!prev || String(createdAt).localeCompare(String(prev)) > 0) {
+        if (!restrictedLastIssueBySerial.get(serialId) || String(createdAt).localeCompare(String(restrictedLastIssueBySerial.get(serialId))) > 0) {
           restrictedLastIssueBySerial.set(serialId, createdAt);
         }
       }
-
-      const employeeId = String(t.employee_id || "").trim();
-      const itemCode = String(t.item_code || "").trim();
-      if (employeeId && itemCode && !serialId) {
-        const key = `${employeeId}__${itemCode}`;
-        const prev = restrictedLastIssueByQtyKey.get(key);
-        if (!prev || String(createdAt).localeCompare(String(prev)) > 0) {
+      const eid = String(t.employee_id || "").trim();
+      const code = String(t.item_code || "").trim();
+      if (eid && code && !serialId) {
+        const key = `${eid}__${code}`;
+        if (!restrictedLastIssueByQtyKey.get(key) || String(createdAt).localeCompare(String(restrictedLastIssueByQtyKey.get(key))) > 0) {
           restrictedLastIssueByQtyKey.set(key, createdAt);
         }
       }
@@ -249,9 +292,9 @@ export default function EmployeeInventoryPage() {
     }
 
     const allEmployeeIds = new Set<string>();
-    for (const e of employees) allEmployeeIds.add(String(e.fss_no || e.serial_no || e.id));
-    for (const r of restrictedIssued) allEmployeeIds.add(String(r.employee_id));
-    for (const r of generalRows) allEmployeeIds.add(String(r.employee_id));
+    // Only show employees that actually have inventory allocated
+    for (const rid of Array.from(restrictedMap.keys())) allEmployeeIds.add(rid);
+    for (const gid of Array.from(generalMap.keys())) allEmployeeIds.add(gid);
 
     const q = String(search || "").trim().toLowerCase();
 
@@ -333,7 +376,11 @@ export default function EmployeeInventoryPage() {
     setExportingAllPdf(true);
     try {
       const token = typeof window !== "undefined" ? window.localStorage.getItem("access_token") : null;
-      const url = `${API_BASE_URL}/api/exports/inventory/employees/pdf?include_zero=true`;
+      let url = `${API_BASE_URL}/api/exports/inventory/employees/pdf?include_zero=false`;
+      if (search) url += `&search=${encodeURIComponent(search)}`;
+      if (dateRange && dateRange[0]) url += `&start_date=${dateRange[0].toISOString()}`;
+      if (dateRange && dateRange[1]) url += `&end_date=${dateRange[1].toISOString()}`;
+
       const res = await fetch(url, {
         method: "GET",
         headers: {
@@ -494,201 +541,36 @@ export default function EmployeeInventoryPage() {
       if (!eid) return;
       setExportingByEmployee((p) => ({ ...p, [eid]: true }));
       try {
-        const group = byEmployee.find((x) => x.employee_id === eid);
-        if (!group) {
-          msg.error("Employee not found");
-          return;
+        const token = typeof window !== "undefined" ? window.localStorage.getItem("access_token") : null;
+        const url = `${API_BASE_URL}/api/exports/inventory/employee/${encodeURIComponent(eid)}/pdf`;
+        const res = await fetch(url, {
+          method: "GET",
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        });
+
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(txt || `Export failed (${res.status})`);
         }
 
-        const imgToDataUrl = async (url: string): Promise<string> => {
-          const res = await fetch(url);
-          if (!res.ok) throw new Error("Logo not found");
-          const blob = await res.blob();
-          return await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result || ""));
-            reader.onerror = () => reject(new Error("Failed to read logo"));
-            reader.readAsDataURL(blob);
-          });
-        };
-
-        const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-        const pageW = doc.internal.pageSize.getWidth();
-        const pageH = doc.internal.pageSize.getHeight();
-
-        let logoDataUrl: string | null = null;
-        try {
-          logoDataUrl = await imgToDataUrl("/logo-removebg-preview.png");
-        } catch {
-          logoDataUrl = null;
-        }
-
-        const marginX = 40;
-        const headerTop = 32;
-        const logoSize = 44;
-        const headerH = 68;
-        const generatedAt = dayjs().format("YYYY-MM-DD HH:mm");
-
-        const drawHeader = (data: any) => {
-          const y = headerTop;
-          doc.setDrawColor(230);
-          doc.setLineWidth(1);
-          doc.line(marginX, y + headerH, pageW - marginX, y + headerH);
-
-          if (logoDataUrl) {
-            try {
-              doc.addImage(logoDataUrl, "PNG", marginX, y, logoSize, logoSize);
-            } catch {
-              // ignore
-            }
-          }
-
-          const titleX = marginX + (logoDataUrl ? logoSize + 12 : 0);
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(16);
-          doc.text("Employee Inventory", titleX, y + 18);
-
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(10);
-          doc.setTextColor(90);
-          doc.text(`${group.employee_name} (${group.employee_id})`, titleX, y + 34);
-          doc.text(`Generated: ${generatedAt}`, titleX, y + 48);
-
-          const pageNum = data?.pageNumber ? Number(data.pageNumber) : 1;
-          doc.text(`Page ${pageNum}`, pageW - marginX, y + 18, { align: "right" });
-          doc.setTextColor(0);
-        };
-
-        let cursorY = headerTop + headerH + 14;
-
-        const serialItems = Array.isArray(group.restricted.serial_items) ? group.restricted.serial_items : [];
-        const qtyItems = Array.isArray(group.restricted.quantity_items) ? group.restricted.quantity_items : [];
-        const generalItems = Array.isArray(group.general) ? group.general : [];
-
-        if (serialItems.length) {
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(10);
-          doc.setTextColor(60);
-          doc.text("Restricted Inventory - Serial Weapons (Guns)", marginX, cursorY);
-          doc.setTextColor(0);
-          cursorY += 8;
-
-          autoTable(doc, {
-            head: [["Weapon", "Serial", "Status", "Date"]],
-            body: serialItems.map((r) => [
-              `${r.item_code}${r.item_name ? ` - ${r.item_name}` : ""}`,
-              String(r.serial_number || ""),
-              String(r.status || ""),
-              dayjs(String(r.created_at)).isValid() ? dayjs(String(r.created_at)).format("YYYY-MM-DD HH:mm") : String(r.created_at).replace("T", " ").slice(0, 19),
-            ]),
-            startY: cursorY,
-            margin: { left: marginX, right: marginX },
-            styles: { font: "helvetica", fontSize: 9.5, cellPadding: 6, overflow: "linebreak" },
-            headStyles: { fillColor: [22, 119, 255], textColor: 255, fontStyle: "bold" },
-            alternateRowStyles: { fillColor: [248, 250, 252] },
-            columnStyles: { 0: { cellWidth: "auto" }, 1: { cellWidth: 130 }, 2: { cellWidth: 80 }, 3: { cellWidth: 110 } },
-            didDrawPage: (data) => {
-              drawHeader(data as any);
-              doc.setFont("helvetica", "normal");
-              doc.setFontSize(9);
-              doc.setTextColor(120);
-              doc.text("Flash ERP", marginX, pageH - 24);
-              doc.text("Confidential", pageW - marginX, pageH - 24, { align: "right" });
-              doc.setTextColor(0);
-            },
-          });
-
-          const finalY = (doc as any).lastAutoTable?.finalY;
-          cursorY = (typeof finalY === "number" ? finalY : cursorY) + 16;
-        }
-
-        if (qtyItems.length) {
-          if (cursorY > pageH - 120) {
-            doc.addPage();
-            cursorY = headerTop + headerH + 14;
-          }
-
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(10);
-          doc.setTextColor(60);
-          doc.text("Restricted Inventory - Quantity Items", marginX, cursorY);
-          doc.setTextColor(0);
-          cursorY += 8;
-
-          autoTable(doc, {
-            head: [["Item", "Issued"]],
-            body: qtyItems.map((r) => [
-              `${r.item_code}${r.item_name ? ` - ${r.item_name}` : ""}`,
-              `${Number(r.quantity_issued ?? 0)} ${String(r.unit_name || "unit")}`.trim(),
-            ]),
-            startY: cursorY,
-            margin: { left: marginX, right: marginX },
-            styles: { font: "helvetica", fontSize: 9.5, cellPadding: 6, overflow: "linebreak" },
-            headStyles: { fillColor: [22, 119, 255], textColor: 255, fontStyle: "bold" },
-            alternateRowStyles: { fillColor: [248, 250, 252] },
-            columnStyles: { 0: { cellWidth: "auto" }, 1: { cellWidth: 140, halign: "right" } },
-            didDrawPage: (data) => {
-              drawHeader(data as any);
-              doc.setFont("helvetica", "normal");
-              doc.setFontSize(9);
-              doc.setTextColor(120);
-              doc.text("Flash ERP", marginX, pageH - 24);
-              doc.text("Confidential", pageW - marginX, pageH - 24, { align: "right" });
-              doc.setTextColor(0);
-            },
-          });
-
-          const finalY = (doc as any).lastAutoTable?.finalY;
-          cursorY = (typeof finalY === "number" ? finalY : cursorY) + 16;
-        }
-
-        if (generalItems.length) {
-          if (cursorY > pageH - 120) {
-            doc.addPage();
-            cursorY = headerTop + headerH + 14;
-          }
-
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(10);
-          doc.setTextColor(60);
-          doc.text("General Inventory - Issued Items", marginX, cursorY);
-          doc.setTextColor(0);
-          cursorY += 8;
-
-          autoTable(doc, {
-            head: [["Item", "Issued", "Note", "Date"]],
-            body: generalItems.map((r) => [
-              `${r.item_code}${r.item_name ? ` - ${r.item_name}` : ""}`,
-              `${Number(r.quantity ?? 0)} ${String(r.unit_name || "unit")}`.trim(),
-              r.notes ? String(r.notes) : "-",
-              dayjs(String(r.created_at)).isValid() ? dayjs(String(r.created_at)).format("YYYY-MM-DD HH:mm") : String(r.created_at).replace("T", " ").slice(0, 19),
-            ]),
-            startY: cursorY,
-            margin: { left: marginX, right: marginX },
-            styles: { font: "helvetica", fontSize: 9.5, cellPadding: 6, overflow: "linebreak" },
-            headStyles: { fillColor: [22, 119, 255], textColor: 255, fontStyle: "bold" },
-            alternateRowStyles: { fillColor: [248, 250, 252] },
-            columnStyles: { 0: { cellWidth: "auto" }, 1: { cellWidth: 90, halign: "right" }, 2: { cellWidth: 140 }, 3: { cellWidth: 110 } },
-            didDrawPage: (data) => {
-              drawHeader(data as any);
-              doc.setFont("helvetica", "normal");
-              doc.setFontSize(9);
-              doc.setTextColor(120);
-              doc.text("Flash ERP", marginX, pageH - 24);
-              doc.text("Confidential", pageW - marginX, pageH - 24, { align: "right" });
-              doc.setTextColor(0);
-            },
-          });
-        }
-
-        doc.save(`employee-${group.employee_id}-inventory-${dayjs().format("YYYYMMDD-HHmm")}.pdf`);
+        const blob = await res.blob();
+        const href = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = href;
+        a.download = `inventory-${eid}-${dayjs().format("YYYYMMDD")}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(href);
       } catch (e: unknown) {
         msg.error(errorMessage(e, "Export failed"));
       } finally {
         setExportingByEmployee((p) => ({ ...p, [eid]: false }));
       }
     },
-    [byEmployee, msg]
+    [msg]
   );
 
   const collapseItems = useMemo(() => {
@@ -793,7 +675,7 @@ export default function EmployeeInventoryPage() {
     <>
       {msgCtx}
       <Card variant="borderless" style={{ borderRadius: 0 }} styles={{ body: { padding: 12 } }}>
-        <Space direction="vertical" size={10} style={{ width: "100%" }}>
+        <Space orientation="vertical" size={10} style={{ width: "100%" }}>
           <Row gutter={[8, 8]} align="middle">
             <Col flex="auto">
               <Typography.Title level={4} style={{ margin: 0 }}>
