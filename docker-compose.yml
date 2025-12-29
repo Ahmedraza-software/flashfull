@@ -5,9 +5,9 @@ services:
     container_name: erp_mysql
     environment:
       MYSQL_DATABASE: flash_erp
-      MYSQL_ROOT_PASSWORD: password
-      MYSQL_PASSWORD: password
-      MYSQL_USER: user
+      MYSQL_ROOT_PASSWORD: FlashErp2024Root
+      MYSQL_PASSWORD: FlashErp2024Db
+      MYSQL_USER: flash_user
     ports:
       - "3306:3306"
     volumes:
@@ -27,7 +27,7 @@ services:
     container_name: erp_phpmyadmin
     environment:
       PMA_HOST: mysql
-      MYSQL_ROOT_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: FlashErp2024Root
     ports:
       - "8080:80"
     networks:
@@ -44,8 +44,8 @@ services:
       dockerfile: Dockerfile
     container_name: erp_app
     environment:
-      DATABASE_URL: mysql+pymysql://root:password@mysql:3306/flash_erp
-      SECRET_KEY: your-secret-key-here
+      DATABASE_URL: mysql+pymysql://flash_user:FlashErp2024Db@mysql:3306/flash_erp
+      SECRET_KEY: FlashERP2024ProductionSecretKey!@#$%^&*SuperSecure123
       ACCESS_TOKEN_EXPIRE_MINUTES: 30
       ALGORITHM: HS256
     ports:
@@ -74,7 +74,8 @@ services:
       - /app/node_modules
       - /app/.next
     environment:
-      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+      - NEXT_PUBLIC_API_BASE_URL=http://46.202.194.55:8001
+      - NEXT_PUBLIC_API_URL=http://46.202.194.55:8001
     networks:
       - erp_network
     depends_on:
