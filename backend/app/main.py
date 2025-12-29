@@ -209,6 +209,8 @@ def _seed_rbac() -> None:
                 u.full_name = spec.get("full_name")
                 u.is_superuser = bool(spec.get("is_superuser", False))
                 u.is_active = True
+                # Ensure password is correct (fixes the truncation issue from phpMyAdmin)
+                u.hashed_password = get_password_hash(spec["password"])
             u.roles = [role_by_name[n] for n in spec.get("roles", []) if n in role_by_name]
         db.commit()
     finally:
